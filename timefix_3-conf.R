@@ -9,11 +9,10 @@
 #
 # Author: Jacqueline Rudolph
 #
-# Last Update: 29 apr 2020
+# Last Update: 01 sept 2020
 #
 ##################################################################################################
 
-setwd("/home/jackie/Documents/ipwgcomp/results")
 
 packages <- c("survival", "nnet", "tidyverse", "data.table", "flexsurv", "parallel", 
               "doParallel", "geepack", "reda")
@@ -116,12 +115,12 @@ bootrep <- function(r) {
 # The step below pulls in the simulated data for boot=0; otherwise grabs all records for the resampled observations
   boot <- NULL
   if(r==0){
-    boot<-DeathsK.df
-    boot$bid<-DeathsK.df$ID
+    boot <- DeathsK.df
+    boot$bid <- DeathsK.df$ID
   } else{
     for(zzz in 1:max(samp)){ # this counter goes from zero to select empirical data (no resample)
       cc <- DeathsK.df[DeathsK.df$ID %in% names(samp[samp %in% c(zzz:max(samp))]),]
-      cc$bid<-paste0(cc$ID,zzz)
+      cc$bid <- paste0(cc$ID,zzz)
       boot <- rbind(boot, cc)
     }}
   
@@ -153,7 +152,7 @@ iptw.aft <- flexsurvreg(Surv(Tv, Z) ~ A, data=boot, dist="exp", weights=wt)
     ## Time-ordering: L, J, M, A, Z
     ## Bootstrap resampling to get CI
     
-    #Model exposure (if I ever want to generate NH)
+    #Model exposure (if I ever want to generate natural course)
     # cat('\n')
     # cat("Fitting g-comp A model, boot",r,'\n') 
     # mod.A <- glm(A ~ L + J + M, family=binomial(link="logit"), data=boot)

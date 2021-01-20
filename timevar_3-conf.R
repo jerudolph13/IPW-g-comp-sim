@@ -7,23 +7,42 @@
 #           -3 time-varying confounders
 #           -binary outcome
 #
-# Author: Jacqueline Rudolph (Credit to Young and Moodie for DGM)
+# Authors: Jacqueline Rudolph, Ashley Naimi (Credit to Young and Moodie for DGM)
 #
-# Last Update: 5 feb 2020
+# Last Update: 11 Nov 2020
 #
 ##################################################################################################
 
-setwd("/home/jer/Documents/gcompipwsim")
-
-packages <- c("survival", "nnet", "tidyverse", "data.table", "flexsurv", "parallel", 
-              "doParallel", "geepack")
+# Read in packages
+lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
+packages <- c("tidyverse", "data.table", "survival", "parallel", "geepack", "flexsurv")
 for (package in packages) {
-  library(package, character.only=T)
+  library(package, character.only=T, lib.loc=lib)
 }
+
+# Pull in command line arguments
+args <- commandArgs(trailingOnly=TRUE)
+
+# Define parameters and functions
+nsim <- 1000                            #Number of simulations
+nboot <- 200                            #Number of bootstrap resamples
+n <- as.numeric(args[1])                #Sample size
+N <- 10                                 #Number of time points
+K <- 1                                  #Number of outcomes
+lambda <- as.numeric(args[2])           #Baseline rate
+montecarlo <- as.numeric(args[3])       #Monte Carlo resample size (0 implies no MC)
 
 expit <- function(x) {1/(1+exp(-x))}
 
-ptm <- proc.time()
+# Prepare data set to hold simulation results
+sim.res <- data.frame(
+  method=c("Oracle PL", "Oracle Cox", "IPW PL", "IPW Cox", "G-comp PL", "G-comp Cox"),
+  lhr=rep(NA, 6),
+  se=rep(NA, 6),
+  coverage=rep(NA, 6),
+  sim=rep(NA, 6),
+  stringsAsFactors = FALSE
+)
 
 
 ##################################################################################################
@@ -38,32 +57,10 @@ ptm <- proc.time()
 # https://www.ncbi.nlm.nih.gov/pubmed/24272681
 ##
 ### Data generation
-##
-n <- 1000 # Number of subjects
-N <- 10 #number of intervals per subject
-K <- 1 # Number of causes of death
 
-montecarlo <- 6000
-nmethods <- 4 # Number of methods to estimate HR
-nsim <- 50 # Number of simulations (increase this # after we are sure code works)
-nboot <- 200 # Number of bootstrap resamples
-
-# Prepare data set to hold simulation results
-sim.res <- data.frame(
-  method=c("Oracle PL", "Oracle Cox", "IPW PL", "IPW Cox", "G-comp PL", "G-comp Cox"),
-  lhr=rep(NA, 6),
-  sd=rep(NA, 6),
-  coverage=rep(NA, 6),
-  error=rep(NA, 6),
-  stringsAsFactors = FALSE
-)
-
-simloop <- function(s, nboot, montecarlo, n=1000, K=1, N=10, nmethods=4){
-  
-  cat("Now running simulation",s,'\n')
-  s <- 1
-  sim <- s
-  set.seed(sim)
+simloop <- function(s, nboot, montecarlo){
+  sim.res$sim <- s
+  set.seed(s)
   
   ## This is the matrix of parameters of interest, possibly different
   ## at each interval
@@ -74,7 +71,6 @@ simloop <- function(s, nboot, montecarlo, n=1000, K=1, N=10, nmethods=4){
   
   ##Here the (untreated) all-cause rate is set to lambda=0.01, with
   ##lambda/K per cause; muK=lambda is used in the algorithm.
-  lambda <- 0.01
   gamma.vec <- rep(log(lambda/K))
   muK <- sum(exp(gamma.vec)) #So this bit is necessary to deal with that inequality in algorithm?
   A<-J<-M<-L<-ID<-Y<-Z<-Tv<-Int<-ALast<-LLast<-LFirst<-JLast<-JFirst<-MLast<-MFirst <- numeric()
@@ -83,8 +79,8 @@ simloop <- function(s, nboot, montecarlo, n=1000, K=1, N=10, nmethods=4){
   ##Here are the coefficients determining the
   ##mediation and treatment assignment mechanisms.
   bevec <- c(log(3/7), 2, log(0.5), log(1.5)) #Used to generate time-varying confounder L
-  bevec2 <- c(log(4/7), 3, log(0.6), log(1.4)) #Used to generate time-varying confounder J
-  bevec3 <- c(log(5/7), 4, log(0.7), log(1.3)) #Used to generate time-varying confounder M
+  bevec2 <- c(log(4/7), 2, log(0.6), log(1.4)) #Used to generate time-varying confounder J
+  bevec3 <- c(log(5/7), 2, log(0.7), log(1.3)) #Used to generate time-varying confounder M
   alvec <- c(log(2/7), 0.5, 0.5, log(4), 0.6, 0.6, 0.8, 0.8) #Used to generate exposure (Intercept, L, LLast, ALast, J, JLast, M, MLast)
   
   ##cval is used as in Young's algorithm to introduce the confounding
@@ -92,7 +88,7 @@ simloop <- function(s, nboot, montecarlo, n=1000, K=1, N=10, nmethods=4){
   
   ##Begin the data-generation loop
   simulation <- function (exposure) {
-    
+      
     for (i in 1:n) {
       ##Generate the counterfactual (untreated) survival time
       T0 <- rexp(1, lambda) #Generate T0 from an exponential dist with constant rate=lamba
@@ -164,7 +160,7 @@ simloop <- function(s, nboot, montecarlo, n=1000, K=1, N=10, nmethods=4){
       } else {
         ##In the case of failure, use the ratio hazards to define the
         ##relevant multinomial distribution on the K causes.
-        Z.vec[i] <- sample(c(1:K), 1, prob = exp(gamma.vec + A.vec[m]*psi.mat[ ,m])) # I don't really get this step
+        Z.vec[i] <- sample(c(1:K), 1, prob = exp(gamma.vec + A.vec[m]*psi.mat[ ,m]))
       }
       
       ##Store the outcomes
@@ -197,15 +193,17 @@ simloop <- function(s, nboot, montecarlo, n=1000, K=1, N=10, nmethods=4){
     
     return(DeathsK.df)
   }
-  
+
 
 #Oracle: get counterfactuals for every simulated individual by setting exposure inside simulation
+  #This gives us a measure of "optimal" performance given sample size and model
+set.seed(123+s)
 oracle1 <- simulation(exposure=1)
+set.seed(123+s)
 oracle0 <- simulation(exposure=0)
+
 oracle <- data.table(rbind(oracle0,oracle1))
 
-cat('\n')
-cat("Fitting oracle",'\n')
 oracle.pl<- glm(Z ~ A + as.factor(Int), data=oracle, family=binomial(link="logit"))
     sim.res$lhr[1] <- coef(oracle.pl)[2]
 oracle.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=oracle, ties="efron", timefix=FALSE)
@@ -218,7 +216,7 @@ DeathsK.df <- simulation(exposure=NULL)
 ##################################################################################################
 ## IPTW with bootstrap resampling to get CI
 
-# Set up data set to hold bootstrap results  
+# Set up data set to hold bootstrap results
 boot.res <- data.frame(
   method=c("IPW PL", "IPW Cox", "G-comp PL", "G-comp Cox"),
   lhr=rep(NA, 4),
@@ -227,10 +225,8 @@ boot.res <- data.frame(
 )
   
 bootrep <- function(r) {
-  cat("Now running simulation",s,"bootstrap",r,'\n')
-  
-  boot.res$boot <- rep(r, 4)
-  set.seed(1000 * sim + r)
+  boot.res$boot <- r
+  set.seed(1000*s + r)
   firstobs <- DeathsK.df[DeathsK.df$Int == 1, ]
   samp <- table(firstobs[sample(1:nrow(firstobs),nrow(firstobs),replace=T), (names(DeathsK.df) == "ID")])
 
@@ -240,36 +236,31 @@ bootrep <- function(r) {
     boot<-DeathsK.df
     boot$bid<-DeathsK.df$ID
   } else{
-    for(zzz in 1:max(samp)){ # this counter goes from zero to select empirical data (no resample)
+    for(zzz in 1:max(samp)){ 
       cc <- DeathsK.df[DeathsK.df$ID %in% names(samp[samp %in% c(zzz:max(samp))]),]
       cc$bid<-paste0(cc$ID,zzz)
       boot <- rbind(boot, cc)
     }}
+  head(boot)
   
-cat('\n')
-cat("Fitting weight models, boot",r,'\n')    
 #Denominator of weights
-denominator <- rep(NA, nrow(boot))
-logit <- predict(glm(A ~ ALast + L + LLast + J + JLast + M + MLast + as.factor(Int), family=binomial(link="logit"), data=boot))
-denominator[boot$A == 1] <- expit(logit[boot$A == 1])
-denominator[boot$A == 0] <- 1 - expit(logit[boot$A == 0])
+ps <- glm(A ~ ALast + L + LLast + J + JLast + M + MLast + as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
+boot$denominator <- boot$A*ps + (1-boot$A)*(1-ps)
 
 #Numerator of weights
-numerator <- rep(NA, nrow(boot))
-logit <- predict(glm(A ~ ALast + as.factor(Int), family=binomial, data=boot))
-numerator[boot$A == 1] <- expit(logit[boot$A == 1])
-numerator[boot$A == 0] <- 1 - expit(logit[boot$A == 0])
-wt <- unlist(tapply(numerator / denominator, boot$bid, cumprod))
+ps <- glm(A ~ as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
+boot$numerator <- boot$A*ps + (1-boot$A)*(1-ps)
+
+boot <- boot %>% 
+  group_by(bid) %>%  
+  mutate(wt=cumprod(numerator/denominator)) %>% 
+  ungroup(bid) 
 
 #IP-weighted Pooled Logistic Model
-cat('\n')
-cat("Fitting IPW PL model, boot",r,'\n')  
 iptw.pl <- glm(Z ~ A + as.factor(Int), data=boot, family=binomial(link="logit"), weights=wt)
   boot.res$lhr[1] <- coef(iptw.pl)[2]
 
 #IP-weighted Cox model
-cat('\n')
-cat("Fitting IPW Cox model, boot",r,'\n')    
 iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", timefix=FALSE)
   boot.res$lhr[2] <- iptw.cox$coef
   
@@ -280,26 +271,14 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
     ## Bootstrap resampling to get CI
   
     #Model confounders
-    cat('\n')
-    cat("Fitting g-comp L model, boot",r,'\n')  
     mod.L <- glm(L ~ LLast + ALast + as.factor(Int), family=binomial(link="logit"), data=boot)
-  
-    cat('\n')
-    cat("Fitting g-comp J model, boot",r,'\n')  
     mod.J <- glm(J ~ JLast + ALast + as.factor(Int), family=binomial(link="logit"), data=boot)    
-  
-    cat('\n')
-    cat("Fitting g-comp L model, boot",r,'\n')  
     mod.M <- glm(M ~ MLast + ALast + as.factor(Int), family=binomial(link="logit"), data=boot)
     
     #Model exposure (if I ever want to generate NH)
-    # cat('\n')
-    # cat("Fitting g-comp A model, boot",r,'\n') 
     # mod.A <- glm(A ~ ALast + L + LLast + as.factor(Int), family=binomial(link="logit"), data=boot)
     
     #Model outcome
-    cat('\n')
-    cat("Fitting g-comp Y model, boot",r,'\n')
     mod.D <- glm(Z ~ A + ALast + L + LLast + J + JLast + M + MLast + as.factor(Int), family=binomial(link="logit"), data=boot)
     mod.D2<-flexsurvreg(Surv(Int0,Tv,Z) ~ A + ALast + L + LLast + J + JLast + M + MLast, data=boot, dist="exp")
     
@@ -307,15 +286,10 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
 #Take a MC Sample
     #Create monte carlo dataset
     #Select first obs for each person to obtain joint empirical distribution of baseline covariates
-    set.seed(1000 * sim + 500 + r)
-    MC0<-boot[boot$Int==1,(names(boot) %in% c("L", "J", "M", "A","rep"))]
+    MC0<-boot[boot$Int==1,(names(boot) %in% c("L", "J", "M", "A"))]
     index<-sample(1:nrow(MC0),montecarlo,replace=T)
     MC<-MC0[index,]
-    # head(MC)
     MC$id<-1:montecarlo
-    
-  cat('\n')
-  cat("Running pgf function, boot",r,'\n')        
     
   #Predict follow-up based on g-formula using PGF function
   pgf<-function(ii, mc_data, length, exposure=NULL){
@@ -328,8 +302,7 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
     Lp <- Jp <- Mp <- Ap <- Yp <- time <- numeric()
     time[1] <- j <- 1
     id <- d$id
-    rep <- d$rep
-    
+
     Lp[1] <- d$L; Jp[1] <- d$J; Mp[1] <- d$M
     if (is.null(exposure)) {
       Ap[1] <- d$A
@@ -337,6 +310,7 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
       Ap[1] <- exposure
     }
     
+    # event status at first time point
     dYp <- data.table(A=Ap[1], ALast=0, L=Lp[1], LLast=0, J=Jp[1], JLast=0, M=Mp[1], MLast=0)
     expSim<-function(dat){
       newD<-dat
@@ -354,7 +328,7 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
       jj<-1
     }
     
-    
+    # subsequent time points
     for (j in 2:lngth) {
       if (Yp[j-1]==0){
         ALast=Ap[j-1]; LLast=Lp[j-1]; JLast=Jp[j-1]; MLast=Mp[j-1]
@@ -362,6 +336,7 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
         dLp <- data.table(LLast, ALast, Int=factor(j))
         Lp[j] <- pFunc(mod.L, dLp)
         dJp <- data.table(JLast, ALast, Int=factor(j))
+        Jp[j] <- pFunc(mod.J, dJp)          
         Jp[j] <- pFunc(mod.J, dJp)          
         dMp <- data.table(MLast, ALast, Int=factor(j))
         Mp[j] <- pFunc(mod.M, dMp)
@@ -383,7 +358,6 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
           id <- id[1:(j-1)]
           time <- time[1:(j-1)]
           jj <- jj[1:(j-1)]
-          rep <- rep[1:(j-1)]
           break
         } else{
           if(t0>0.001 & t0<=1){
@@ -399,19 +373,18 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
       }
       time[j] <- j
     }
-    #print(ii)
-    gdat <- data.table(id,time,jj,Ap,Lp,Jp,Mp,Yp,rep)
+    gdat <- data.table(id,time,jj,Ap,Lp,Jp,Mp,Yp)
     gdat$last<-as.numeric(gdat$Yp!=0 | gdat$time==lngth)
     return(gdat)
   }
   
   cores <- detectCores()
-  res0<-mclapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=0)}, mc.cores=cores, mc.set.seed=FALSE)
-  #res0<-lapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=0)})
+  #res0<-mclapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=0)}, mc.cores=cores, mc.set.seed=FALSE)
+  res0<-lapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=0)})
     res0<-do.call(rbind,res0)
     
-  res1<-mclapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=1)}, mc.cores=cores, mc.set.seed=FALSE)
-  #res1<-lapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=1)})
+  #res1<-mclapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=1)}, mc.cores=cores, mc.set.seed=FALSE)
+  res1<-lapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=1)})
     res1<-do.call(rbind,res1)
     
     gcomp.dat <- data.table(rbind(res1, res0))
@@ -430,16 +403,14 @@ iptw.cox <- coxph(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt, ties="efron", t
     return(boot.res)
 }
 
-#cores <- detectCores()
-#all.boot <- mclapply(0:nboot, function(tt) {bootrep(tt)}, mc.cores=cores, mc.set.seed=FALSE)
 all.boot <- lapply(0:nboot, function(tt) {bootrep(tt)})
 all.boot <- do.call(rbind, all.boot)
 
 #For point estimate, pull out results where boot=0
-boot0 <- filter(all.boot, boot == 0)
+boot0 <- filter(all.boot, boot==0)
 sim.res$lhr[3:6] <- boot0$lhr
-sim.res$error <- abs(sim.res$lhr - log(2))
-  
+all.boot <- filter(all.boot, boot>0)
+
 
 ##################################################################################################
 ##Aggregate results
@@ -447,28 +418,26 @@ sim.res$error <- abs(sim.res$lhr - log(2))
 #Summarize over bootstraps
 boot.summ <- all.boot %>% 
   group_by(method) %>% 
-  summarize(b.avg.lhr = mean(lhr), b.sd.lhr = sd(lhr))
-boot.summ <- boot.summ[order(boot.summ$method, decreasing=TRUE), ]
-sim.res$coverage[3:6] <- (sim.res$lhr[3:6] - 1.96 * boot.summ$b.sd.lhr) <= log(2) & 
-                          log(2) <= (sim.res$lhr[3:6] + 1.96 * boot.summ$b.sd.lhr)
-sim.res$sd[3:6] <- boot.summ$b.sd.lhr
-sim.res$sim <- s
+  summarize(b.avg.lhr = mean(lhr), b.sd.lhr = sd(lhr)) %>% 
+  arrange(desc(method))
+
+sim.res$coverage[3:6] <- (sim.res$lhr[3:6] - 1.96*boot.summ$b.sd.lhr) <= log(2) & 
+                          log(2) <= (sim.res$lhr[3:6] + 1.96*boot.summ$b.sd.lhr)
+sim.res$se[3:6] <- boot.summ$b.sd.lhr
 
 return(sim.res)
 }
 
-#cores <- detectCores()
-#all.res <- mclapply(1:nsim, function(x) {simloop(x,nboot,montecarlo)}, mc.cores=cores, mc.set.seed=FALSE)
-all.res <- lapply(1:nsim, function(x) {simloop(x,nboot,montecarlo)})
+cores <- detectCores()
+all.res <- mclapply(1:nsim, function(x) {simloop(x,nboot,montecarlo)}, mc.cores=cores, mc.set.seed=FALSE)
+#all.res <- lapply(1:nsim, function(x) {simloop(x, nboot, montecarlo)})
 all.res <- do.call(rbind, all.res)
 
-#Summarize over simulations
-res.summ <- all.res %>%
-  group_by(method) %>%
-  summarize(avg.lhr = mean(lhr), sd.lhr = sd(lhr), avg.se = mean(sd), avg.coverage = mean(coverage), avg.error = mean(error))
-res.summ$bias <- res.summ$avg.lhr - log(2)
-res.summ$mse <- res.summ$sd.lhr^2 + res.summ$bias^2
+filename <- paste("./results/timevar_3-conf_n-", n, "_mc-", montecarlo, sep="")
+if (lambda==0.05) {
+  filename <- paste(filename, "_common.txt", sep="")
+} else {
+  filename <- paste(filename, ".txt", sep="")
+}
+write.table(all.res, file=filename, sep="\t")
 
-proc.time() - ptm
-
-write.table(all.res, file="ipwgcomp_3-conf_50-results.txt", sep="\t", row.names=FALSE)

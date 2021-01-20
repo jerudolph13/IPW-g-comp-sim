@@ -9,30 +9,35 @@
 #
 # Author: Jacqueline Rudolph and Ashley Naimi
 #
-# Last Update: 02 sept 2020
+# Last Update: 20 Jan 2020
 #
 ##################################################################################################
 
-#lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
+#Read in packages
+lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
 packages <- c("tidyverse", "data.table", "flexsurv", "parallel", "survival")
 for (package in packages) {
-  library(package, character.only=T) #, lib.loc=lib)
+  library(package, character.only=T, lib.loc=lib)
 }
 
+# Pull in command line arguments
+args <- commandArgs(trailingOnly=TRUE)
+
 #Define parameters and functions
-n <- 1000 # Number of subjects
-K <- 1 # Number of causes of death
-lambda <- 0.05
-montecarlo <- 2000
-nsim <- 5 # Number of simulations (increase this # after we are sure code works)
-nboot <- 5 # Number of bootstrap resamples
+nsim <- 1000			#Number of simulations
+nboot <- 200			#Number of bootstrap resamples
+n <- as.numeric(args[1])		#Sample size
+lambda <- as.numeric(args[2])		#Baseline rate
+montecarlo <- as.numeric(args[3])	#Monte Carlo resample size (0 implies no MC)
 
 expit <- function(x) {1/(1+exp(-x))}
 
 # Prepare data set to hold simulation results
 sim.res <- data.frame(
   method=c("Oracle", "IPW", "G-computation"),
-  lhr=rep(NA, 3),
+  r1=rep(NA, 3),
+  r0=rep(NA, 3),
+  rd=rep(NA, 3),
   se=rep(NA, 3),
   coverage=rep(NA, 3),
   sim=rep(NA, 3),
@@ -64,8 +69,13 @@ truth_func <- function(simN){
   #ORACLE
   truth_dat <- data.table(rbind(DeathsK.df0,DeathsK.df1))
   
-  truth.aft <- flexsurvreg(Surv(Tv, Z) ~ A, data=truth_dat, dist="exp")
-  truth <- truth.aft$coefficients[2]
+  fit <- summary(survfit(Surv(Tv, Z) ~ A, data=truth_dat))
+  truth.surv <- data.frame(time = fit$time, 
+                           surv = fit$surv,
+                           exposure = fit$strata)
+  r0 <- 1- min(truth.surv$surv[truth.surv$exposure=="A=0"])
+  r1 <- 1- min(truth.surv$surv[truth.surv$exposure=="A=1"])
+  truth <- r1 - r0
   
   return(truth)
 }
@@ -78,7 +88,6 @@ true <- truth_func(1e6)
 # Data generation
 
 sim_func <- function(iter){
-  iter <- 1
   set.seed(iter)
   sim.res$sim <- rep(iter, 3)
 
@@ -114,14 +123,22 @@ sim_func <- function(iter){
   
   #Oracle
   oracle <- data.table(rbind(DeathsK.df0,DeathsK.df1))
-  oracle.aft <- flexsurvreg(Surv(Tv, Z) ~ A, data=oracle, dist="exp")
-  sim.res$lhr[1] <- oracle.aft$coefficients[2]
+  
+  fit <- summary(survfit(Surv(Tv, Z) ~ A, data=oracle))
+  surv <- data.frame(time = fit$time, 
+                     surv = fit$surv,
+                     exposure = fit$strata)
+  sim.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+  sim.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+  sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
   
   #Bootstrap the IPW and g-computation
   boot.res <- data.frame(
     method = c("IPW", "G-computation"),
     boot_num=rep(NA, 2),
-    lhr=rep(NA, 2),
+    r0=rep(NA, 2),
+    r1=rep(NA, 2),
+    rd=rep(NA, 2),
     stringsAsFactors = FALSE
   )
   
@@ -147,16 +164,26 @@ sim_func <- function(iter){
       
       wt <- numerator / denominator 
       
-      iptw.aft <- flexsurvreg(Surv(Tv, Z) ~ A, data=boot, dist="exp", weights=wt)
-      boot.res$lhr[1] <- iptw.aft$coefficients[2]
+      fit <- summary(survfit(Surv(Tv, Z) ~ A, data=boot, weights=wt))
+      surv <- data.frame(time = fit$time, 
+                         surv = fit$surv,
+                         exposure = fit$strata)
+      boot.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+      boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+      boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
       
       #G-computation
-      mod.D <- flexsurvreg(Surv(Tv, Z) ~ A + L + J + M, data=boot, dist="exp")
+      mod.D <- survreg(Surv(Tv, Z) ~ A + L + J + M, data=boot, dist="exp")
       
-      MC0<-boot[ ,(names(boot) %in% c("L", "J", "M", "A", "rep"))]
-      index <- sample(1:nrow(MC0), montecarlo, replace=T)
-      MC<-MC0[index, ]
-      MC$id<-1:montecarlo
+      if (montecarlo==0) {      
+        MC <- boot[ , (names(boot) %in% c("L", "J", "M", "A", "rep"))]
+        MC$id <- 1:n
+      } else {
+        MC0 <- boot[ ,(names(boot) %in% c("L", "J", "M", "A", "rep"))]
+        index <- sample(1:nrow(MC0), montecarlo, replace=T)
+        MC<-MC0[index, ]
+        MC$id<-1:montecarlo	
+      }
       
       pgf<-function(mc_data, exposure){
         d <- mc_data
@@ -173,12 +200,12 @@ sim_func <- function(iter){
           A <- exposure
         }
         
-        p_t <- exp(coef(mod.D)[names(coef(mod.D))=="rate"])*
-          exp(coef(mod.D)[names(coef(mod.D))=="A"]*A 
-              + coef(mod.D)[names(coef(mod.D))=="L"]*L
-              + coef(mod.D)[names(coef(mod.D))=="J"]*J
-              + coef(mod.D)[names(coef(mod.D))=="M"]*M)
-        Tv <- rexp(montecarlo, p_t)
+         p_t <- exp(-coef(mod.D)[names(coef(mod.D))=="(Intercept)"])*
+          exp(-coef(mod.D)[names(coef(mod.D))=="A"]*A 
+              - coef(mod.D)[names(coef(mod.D))=="L"]*L
+              - coef(mod.D)[names(coef(mod.D))=="J"]*J
+              - coef(mod.D)[names(coef(mod.D))=="M"]*M)
+        Tv <- rexp(length(d$id), p_t)
         Z <- ifelse(Tv < 10, 1, 0)
         Tv <- ifelse(Tv > 10, 10, Tv)
         
@@ -189,8 +216,13 @@ sim_func <- function(iter){
       res1 <- pgf(mc_data=MC, exposure=1)
       gcomp.dat <- data.table(rbind(res1, res0))
       
-      gcomp.aft <- flexsurvreg(Surv(Tv, Z) ~ A, data=gcomp.dat, dist="exp")
-      boot.res$lhr[2] <- gcomp.aft$coefficients[2]
+      fit <- summary(survfit(Surv(Tv, Z) ~ A, data=gcomp.dat))
+      surv <- data.frame(time = fit$time, 
+                         surv = fit$surv,
+                         exposure = fit$strata)
+      boot.res$r0[2] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+      boot.res$r1[2] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+      boot.res$rd[2] <- boot.res$r1[2] - boot.res$r0[2]
       
       return(boot.res)
   }
@@ -200,18 +232,20 @@ sim_func <- function(iter){
   
   #For point estimates, pull out results where boot=0
   boot0 <- filter(all.boot, boot_num == 0)
-  sim.res$lhr[2:3] <- boot0$lhr
-  all.boot <- filter(all.boot, boot_num > 0)
+  sim.res$r0[2:3] <- boot0$r0
+  sim.res$r1[2:3] <- boot0$r1
+  sim.res$rd[2:3] <- boot0$rd
+  all.boot <- filter(all.boot, boot_num>0)
   
   #Summarize over bootstraps
   boot.summ <- all.boot %>% 
     group_by(method) %>% 
-    summarize(b.avg.lhr = mean(lhr), b.sd.lhr = sd(lhr)) %>% 
+    summarize(b.avg.rd = mean(rd), b.sd.rd = sd(rd)) %>% 
     arrange(desc(method))
-
-  sim.res$coverage[2:3] <- (sim.res$lhr[2:3] - 1.96 * boot.summ$b.sd.lhr) <= true & 
-    true <= (sim.res$lhr[2:3] + 1.96 * boot.summ$b.sd.lhr)
-  sim.res$se[2:3] <- boot.summ$b.sd.lhr
+  
+  sim.res$coverage[2:3] <- (sim.res$rd[2:3] - 1.96 * boot.summ$b.sd.rd) <= true & 
+    true <= (sim.res$rd[2:3] + 1.96 * boot.summ$b.sd.rd)
+  sim.res$se[2:3] <- boot.summ$b.sd.rd
   
   return(sim.res)
   
@@ -219,7 +253,14 @@ sim_func <- function(iter){
 
 cores <- detectCores() - 2
 all.res <- mclapply(1:nsim, function(ii) sim_func(ii), mc.cores=cores, mc.set.seed=FALSE)
-all.res <- do.call(rbind,sim_res)
+all.res <- do.call(rbind,all.res)
+all.res$truth <- rep(true, dim(all.res)[1])
 
-#write.table(all.res, file="../results/timefix_3-conf_n-5000_common.txt", sep="\t")
+filename <- paste("./results/timefix_3-conf_n-", n, "_mc-", montecarlo, sep="")
+if (lambda==0.05) {
+  filename <- paste(filename, "_common.txt", sep="")
+} else {
+  filename <- paste(filename, ".txt", sep="")
+}
+write.table(all.res, file=filename, sep="\t")
 

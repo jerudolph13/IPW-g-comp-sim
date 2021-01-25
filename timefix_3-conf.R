@@ -292,7 +292,7 @@ all.res <- mclapply(1:nsim, function(ii) sim_func(ii), mc.cores=cores, mc.set.se
 all.res <- do.call(rbind,all.res)
 all.res$truth <- rep(true, dim(all.res)[1])
 
-filename <- paste("./results/timefix_3-conf_n-", n, "_mc-", montecarlo, sep="")
+filename <- paste("../results/timefix_3-conf_n-", n, "_mc-", montecarlo, sep="")
 if (lambda==0.05) {
   filename <- paste(filename, "_common.txt", sep="")
 } else {

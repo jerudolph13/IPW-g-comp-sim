@@ -9,13 +9,13 @@
 #
 # Authors: Jacqueline Rudolph, Ashley Naimi (Credit to Young and Moodie for DGM)
 #
-# Last Update: 21 Jan 2021
+# Last Update: 25 Jan 2021
 #
 ##################################################################################################
 
 # Read in packages
 lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
-packages <- c("tidyverse", "data.table", "survival", "parallel", "flexsurv")
+packages <- c("tidyverse", "data.table", "survival", "parallel", "flexsurv", "tidyselect", "ltmle")
 for (package in packages) {
   library(package, character.only=T, lib.loc=lib)
 }
@@ -35,19 +35,17 @@ montecarlo <- as.numeric(args[3])       #Monte Carlo resample size (0 implies no
 expit <- function(x) {1/(1+exp(-x))}
 
 # Read in the truth
-truth <- read.table(file="./results/timevar_truth.txt", sep="\t") %>% 
+truth <- read.table(file="../results/timevar_truth.txt", sep="\t") %>% 
   rename(lam=lambda) %>% 
   filter(n.conf==1 & lam==lambda)
 
 # Prepare data set to hold simulation results
 sim.res <- data.frame(
-  method=c("Oracle", "IPW", "G-computation"),
-  r1=rep(NA, 3),
-  r0=rep(NA, 3),
-  rd=rep(NA, 3),
-  se=rep(NA, 3),
-  coverage=rep(NA, 3),
-  sim=rep(NA, 3),
+  method=c("Oracle", "IPW", "G-computation", "ICE"),
+  r1=rep(NA, 4),
+  r0=rep(NA, 4),
+  rd=rep(NA, 4),
+  sim=rep(NA, 4),
   stringsAsFactors = FALSE
 )
 
@@ -173,87 +171,89 @@ simloop <- function(s, nboot, montecarlo){
   }
 
 
-# Oracle: get counterfactuals for every simulated individual by setting exposure inside simulation
-  # This gives us a measure of "optimal" performance given sample size and model
-set.seed(123+s)
-oracle1 <- simulation(exposure=1)
-set.seed(123+s) #Same seed to ensure the same
-oracle0 <- simulation(exposure=0)
-
-oracle <- data.table(rbind(oracle0,oracle1))
-
-fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=oracle))
-surv <- data.frame(time = fit$time, 
-                   surv = fit$surv,
-                   exposure = fit$strata)
-sim.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
-sim.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
-sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
-
-# Now create simulation to be used in analysis steps
-DeathsK.df <- simulation(exposure=NULL)
+  # Oracle: get counterfactuals for every simulated individual by setting exposure inside simulation
+    # This gives us a measure of "optimal" performance given sample size and model
+  set.seed(123+s)
+  oracle1 <- simulation(exposure=1)
+  set.seed(123+s) #Same seed to ensure the same
+  oracle0 <- simulation(exposure=0)
+  
+  oracle <- data.table(rbind(oracle0,oracle1))
+  
+  fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=oracle))
+  surv <- data.frame(time = fit$time, 
+                     surv = fit$surv,
+                     exposure = fit$strata)
+  sim.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+  sim.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+  sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
+  
+  # Now create simulation to be used in analysis steps
+  DeathsK.df <- simulation(exposure=NULL)
 
 
 ##################################################################################################
 ## Bootstrap resample to get CIs
 
-# Set up data set to hold bootstrap results
-boot.res <- data.frame(
-  method=c("IPW", "G-computation"),
-  boot_num=rep(NA, 2),
-  r1=rep(NA, 2),
-  r0=rep(NA, 2),
-  rd=rep(NA, 2),
-  stringsAsFactors=FALSE
-)
+  # Set up data set to hold bootstrap results
+  boot.res <- data.frame(
+    method=c("IPW", "G-computation", "ICE"),
+    boot_num=rep(NA, 3),
+    r1=rep(NA, 3),
+    r0=rep(NA, 3),
+    rd=rep(NA, 3),
+    stringsAsFactors=FALSE
+  )
+    
+  bootrep <- function(r) {
+    boot.res$boot_num <- r
+    set.seed(r+1)
+    firstobs <- DeathsK.df[DeathsK.df$Int == 1, ]
+    samp <- table(firstobs[sample(1:nrow(firstobs),nrow(firstobs),replace=T), (names(DeathsK.df) == "ID")])
   
-bootrep <- function(r) {
-  boot.res$boot_num <- r
-  set.seed(r+1)
-  firstobs <- DeathsK.df[DeathsK.df$Int == 1, ]
-  samp <- table(firstobs[sample(1:nrow(firstobs),nrow(firstobs),replace=T), (names(DeathsK.df) == "ID")])
-
-# The step below pulls in the simulated data for boot=0; otherwise grabs all records for the resampled observations
-  boot <- NULL
-  if(r==0){
-    boot <- DeathsK.df
-    boot$bid <- DeathsK.df$ID
-  } else{
-    for(zzz in 1:max(samp)){ 
-      cc <- DeathsK.df[DeathsK.df$ID %in% names(samp[samp %in% c(zzz:max(samp))]),]
-      cc$bid <- paste0(cc$ID, zzz)
-      boot <- rbind(boot, cc)
-    }}
-
+  # The step below pulls in the simulated data for boot=0; otherwise grabs all records for the resampled observations
+    boot <- NULL
+    if(r==0){
+      boot <- DeathsK.df %>% 
+        rename(bid = ID)
+    } else{
+      for(zzz in 1:max(samp)){ 
+        cc <- DeathsK.df[DeathsK.df$ID %in% names(samp[samp %in% c(zzz:max(samp))]),]
+        cc$bid <- paste0(cc$ID, zzz)
+        boot <- rbind(boot, cc)
+      }
+      boot <- select(boot, -ID)
+    }
+  
   
 ##################################################################################################
 ## IPW 
   
-# Denominator of weights
-ps <- glm(A ~ ALast + L + LLast + as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
-boot$denominator <- boot$A*ps + (1-boot$A)*(1-ps)
+    # Denominator of weights
+    ps <- glm(A ~ ALast + L + LLast + as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
+    boot$denominator <- boot$A*ps + (1-boot$A)*(1-ps)
+    
+    # Numerator of weights
+    ps <- glm(A ~ as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
+    boot$numerator <- boot$A*ps + (1-boot$A)*(1-ps)
+    
+    boot <- boot %>% 
+      group_by(bid) %>%  
+      mutate(wt=cumprod(numerator/denominator)) %>% 
+      ungroup(bid) 
 
-# Numerator of weights
-ps <- glm(A ~ as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
-boot$numerator <- boot$A*ps + (1-boot$A)*(1-ps)
-
-boot <- boot %>% 
-  group_by(bid) %>%  
-  mutate(wt=cumprod(numerator/denominator)) %>% 
-  ungroup(bid) 
-
-# IP-weighted survival
-fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt))
-surv <- data.frame(time = fit$time, 
-                   surv = fit$surv,
-                   exposure = fit$strata)
-boot.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
-boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
-boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
+    # IP-weighted survival
+    fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt))
+    surv <- data.frame(time = fit$time, 
+                       surv = fit$surv,
+                       exposure = fit$strata)
+    boot.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+    boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+    boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
   
 
 ##################################################################################################
-## G-computation
+## Classic g-computation
     # Time-ordering: LLast, ALast, L, A, Z
 
     # Model confounder
@@ -265,110 +265,107 @@ boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
     # Model outcome (flexsurv used bc survreg doesn't support start/stop coding)
     mod.D <- flexsurvreg(Surv(Int0,Tv,Z) ~ A + ALast + L + LLast, data=boot, dist="exp")
     
-# Take a Monte Carlo (MC) sample
+    # Take a Monte Carlo (MC) sample
     # Select first obs for each person to obtain joint empirical distribution of baseline covariates
     MC0 <- boot[boot$Int==1, (names(boot) %in% c("L", "A"))]
     index <- sample(1:nrow(MC0), montecarlo, replace=T)
     MC <- MC0[index, ]
     MC$id <- 1:montecarlo
     
-  # Predict follow-up based on g-formula using PGF function
-  pgf <- function (ii, mc_data, length, exposure=NULL) {
-    
-    pFunc <- function (mod,ndat) {
-      as.numeric(predict(mod, newdata=ndat, type="response") > runif(1))
-    }
-    
-    d <- mc_data
-    d <- d[d$id==ii,]
-    lngth <- length
-    Lp<-Ap<-Yp<-time <- numeric()
-    time[1] <- j <- 1
-    id <- d$id
-
-    Lp[1] <- d$L
-    if (is.null(exposure)) {
-      Ap[1] <- d$A
-    } else{
-      Ap[1] <- exposure
-    }
-    
-    # event status at first time point
-    dYp <- data.table(A=Ap[1], ALast=0, L=Lp[1], LLast=0)
-    expSim <- function (dat) {
-      newD <- dat
-      desX <- newD[,c("A", "ALast", "L","LLast")]
-      y0 <- rexp(1, exp(coef(mod.D)[names(coef(mod.D))=="rate"])*
-                 exp(coef(mod.D)[!names(coef(mod.D))=="rate"]%*%t(desX)))
-      return(y0)
-    }
-    t0 <- expSim(dYp)
-    if (t0<=1) {
-      Yp[1] <- 1
-      jj <- t0
-    } else {
-      Yp[1] <- 0
-      jj <- 1
-    }
-    
-    # subsequent time points
-    for (j in 2:lngth) {
-      if (Yp[j-1]==0) {
-        ALast <- Ap[j-1]; LLast <- Lp[j-1]
-        
-        dLp <- data.table(LLast, ALast, Int=factor(j))
-        Lp[j] <- pFunc(mod.L, dLp)
-
-        if (is.null(exposure)) {
-          dAp <- data.table(L=Lp[j], LLast, ALast, Int=factor(j))
-          Ap[j] <- pFunc(mod.A, dAp)
-        } else{
-          Ap[j] <- exposure
-        }
-        
-        dYp <- data.table(A=Ap[j], ALast, L=Lp[j], LLast)
-        t0 <- expSim(dYp)
-        if (t0<=0.001) {
-          Yp[j-1] <- 1 #If the time interval is short enough to cause an error, place event at end of previous time point
-          Lp <- Lp[1:(j-1)]
-          Ap <- Ap[1:(j-1)]
-          id <- id[1:(j-1)]
-          time <- time[1:(j-1)]
-          jj <- jj[1:(j-1)]
-          break
-        } else {
-          if (t0>0.001 & t0<=1) {
-            Yp[j] <- 1
-            jj <- (j-1) + t0
-          } else { 
-            Yp[j] <- 0
-            jj <- j
-          }}
-        
-      } else {
-        break
+    # Predict follow-up based on g-formula using PGF function
+    pgf <- function (ii, mc_data, length, exposure=NULL) {
+      
+      pFunc <- function (mod,ndat) {
+        as.numeric(predict(mod, newdata=ndat, type="response") > runif(1))
       }
-      time[j] <- j
-    }
-    gdat <- data.table(id, time, jj, Ap, Lp, Yp)
-    gdat$last <- as.numeric(gdat$Yp!=0 | gdat$time==lngth)
-    return(gdat)
-  }
+      
+      d <- mc_data
+      d <- d[d$id==ii,]
+      lngth <- length
+      Lp<-Ap<-Yp<-time <- numeric()
+      time[1] <- j <- 1
+      id <- d$id
   
-  # cores <- detectCores()
-  # res0<-mclapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=0)}, mc.cores=cores, mc.set.seed=FALSE)
-  res0 <- lapply(1:montecarlo,function(x) {pgf(x ,mc_data=MC, length=N, exposure=0)})
-    res0 <- do.call(rbind,res0)
+      Lp[1] <- d$L
+      if (is.null(exposure)) {
+        Ap[1] <- d$A
+      } else{
+        Ap[1] <- exposure
+      }
+      
+      # event status at first time point
+      dYp <- data.table(A=Ap[1], ALast=0, L=Lp[1], LLast=0)
+      expSim <- function (dat) {
+        newD <- dat
+        desX <- newD[,c("A", "ALast", "L","LLast")]
+        y0 <- rexp(1, exp(coef(mod.D)[names(coef(mod.D))=="rate"])*
+                   exp(coef(mod.D)[!names(coef(mod.D))=="rate"]%*%t(desX)))
+        return(y0)
+      }
+      t0 <- expSim(dYp)
+      if (t0<=1) {
+        Yp[1] <- 1
+        jj <- t0
+      } else {
+        Yp[1] <- 0
+        jj <- 1
+      }
+      
+      # subsequent time points
+      for (j in 2:lngth) {
+        if (Yp[j-1]==0) {
+          ALast <- Ap[j-1]; LLast <- Lp[j-1]
+          
+          dLp <- data.table(LLast, ALast, Int=factor(j))
+          Lp[j] <- pFunc(mod.L, dLp)
+  
+          if (is.null(exposure)) {
+            dAp <- data.table(L=Lp[j], LLast, ALast, Int=factor(j))
+            Ap[j] <- pFunc(mod.A, dAp)
+          } else{
+            Ap[j] <- exposure
+          }
+          
+          dYp <- data.table(A=Ap[j], ALast, L=Lp[j], LLast)
+          t0 <- expSim(dYp)
+          if (t0<=0.001) {
+            Yp[j-1] <- 1 #If the time interval is short enough to cause an error, place event at end of previous time point
+            Lp <- Lp[1:(j-1)]
+            Ap <- Ap[1:(j-1)]
+            id <- id[1:(j-1)]
+            time <- time[1:(j-1)]
+            jj <- jj[1:(j-1)]
+            break
+          } else {
+            if (t0>0.001 & t0<=1) {
+              Yp[j] <- 1
+              jj <- (j-1) + t0
+            } else { 
+              Yp[j] <- 0
+              jj <- j
+            }}
+          
+        } else {
+          break
+        }
+        time[j] <- j
+      }
+      gdat <- data.table(id, time, jj, Ap, Lp, Yp)
+      gdat$last <- as.numeric(gdat$Yp!=0 | gdat$time==lngth)
+      return(gdat)
+    }
+  
+    res0 <- lapply(1:montecarlo,function(x) {pgf(x ,mc_data=MC, length=N, exposure=0)})
+      res0 <- do.call(rbind,res0)
     
-  # res1<-mclapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=1)}, mc.cores=cores, mc.set.seed=FALSE)
-  res1 <- lapply(1:montecarlo,function(x) {pgf(x, mc_data=MC, length=N, exposure=1)})
-    res1 <- do.call(rbind, res1)
+    res1 <- lapply(1:montecarlo,function(x) {pgf(x, mc_data=MC, length=N, exposure=1)})
+      res1 <- do.call(rbind, res1)
     
     gcomp.dat <- data.table(rbind(res1, res0))
     gcomp.dat$Int0 <- gcomp.dat$time - 1
     gcomp.dat$Int <- ifelse(gcomp.dat$last==1, gcomp.dat$jj, gcomp.dat$time)
     
-# Run outcome model
+    # Run outcome model
     fit <- summary(survfit(Surv(Int0, Int, Yp) ~ Ap, data=gcomp.dat))
     surv <- data.frame(time = fit$time, 
                        surv = fit$surv,
@@ -376,35 +373,108 @@ boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
     boot.res$r0[2] <- 1 - min(surv$surv[surv$exposure=="Ap=0"])
     boot.res$r1[2] <- 1 - min(surv$surv[surv$exposure=="Ap=1"])
     boot.res$rd[2] <- boot.res$r1[2] - boot.res$r0[2]
+
+    
+##################################################################################################
+## G-computation via iterated conditional expectations (ICE)
+    
+    # Make confounder wide
+    confounder <- boot %>% 
+      select(bid, Int, L) %>% 
+      pivot_wider(names_from=Int, names_prefix="L", values_from=L, values_fill=NA, names_sort=T) 
+    
+    # Make exposure wide
+    exposure <- boot %>% 
+      select(bid, Int, A) %>% 
+      pivot_wider(names_from=Int, names_prefix="A", values_from=A, values_fill=NA, names_sort=T)  
+    
+    # Make outcome wide
+    outcome <- boot %>% 
+      select(bid, Int, Z) %>% 
+      pivot_wider(names_from=Int, names_prefix="Z", values_from=Z, values_fill=0, names_sort=T)  
+      # Once an event has occurred, all subsequent nodes must be 1
+      for (i in 2:N) {
+        outcome[ , i+1] <- outcome[ , i+1] + outcome[ , i]
+      }
+    
+    # Interleave together in correct order (L, A, Z)
+    wide <- select(boot, bid)
+    for (i in 1:N){
+      wide <- merge(wide, confounder[ , c(1, i+1)], by="bid")
+      wide <- merge(wide, exposure[ , c(1, i+1)], by="bid")
+      wide <- merge(wide, outcome[ , c(1, i+1)], by="bid")
+    }
+    
+    # Set up call to ltmle package
+    Anodes <- vars_select(names(wide), starts_with("A"))
+    Lnodes <- vars_select(names(wide), starts_with("L"))
+    Ynodes <- vars_select(names(wide), starts_with("Z"))
+    
+    Aformula <- rep(NA, N)
+    for (i in 1:N){
+      if (i==1) {
+        #Formula for A(1)
+        Aformula[i] <- paste(Anodes[i], "~", Lnodes[i], sep=" ")
+      } else {
+        #Formula for A(t), t>1
+        Aformula[i] <- paste(Anodes[i], "~", Anodes[i-1], "+", Lnodes[i], "+", Lnodes[i-1], sep=" ")
+      }
+    }
+    
+    Yformula <- rep(NA, N)
+    for (i in 1:N){
+      if (i==1) {
+        #Formula for Z(1)
+        names(Yformula)[i] <- Ynodes[i]
+        Yformula[i] <- paste("Q.kplus1 ~", Anodes[i], "+", Lnodes[i], sep=" ")
+      } else {
+        #Formula for Z(t), t>1
+        names(Yformula)[i] <- Ynodes[i]
+        Yformula[i] <- paste("Q.kplus1 ~", Anodes[i], "+", Anodes[i-1], "+", Lnodes[i], "+", Lnodes[i-1], sep=" ")
+      }
+    }
+
+    # Use ltmle to implement ICE g-comp
+    res <- ltmle(data=select(wide, -bid), 
+                 Anodes=Anodes, Lnodes=Lnodes, Ynodes=Ynodes,
+                 Qform=Yformula,
+                 gform=Aformula,
+                 abar=list(treatment=rep(1, N), control=rep(0, N)),
+                 survivalOutcome=T,
+                 SL.library=NULL,
+                 gcomp=T)
+    
+    summ <- summary(res)  
+    boot.res$r1[3] <- summ$effect.measures$treatment$estimate
+    boot.res$r0[3] <- summ$effect.measures$control$estimate
+    boot.res$rd[3] <- summ$effect.measures$ATE$estimate
     
     return(boot.res)
-}
+  }
 
-all.boot <- lapply(0:nboot, function(tt) {bootrep(tt)})
-all.boot <- do.call(rbind, all.boot)
-
-# For point estimate, pull out results where boot=0
-boot0 <- filter(all.boot, boot_num==0)
-sim.res$r0[2:3] <- boot0$r0
-sim.res$r1[2:3] <- boot0$r1
-sim.res$rd[2:3] <- boot0$rd
-all.boot <- filter(all.boot, boot_num>0)
+  all.boot <- lapply(0:nboot, function(tt) {bootrep(tt)})
+  all.boot <- do.call(rbind, all.boot)
 
 
 ##################################################################################################
 ## Aggregate results
+  
+  # For point estimate, pull out results where boot=0
+  boot0 <- filter(all.boot, boot_num==0)
+  sim.res$r0[2:4] <- boot0$r0
+  sim.res$r1[2:4] <- boot0$r1
+  sim.res$rd[2:4] <- boot0$rd
+  all.boot <- filter(all.boot, boot_num>0)
 
-# Summarize over bootstraps
-boot.summ <- all.boot %>% 
-  group_by(method) %>% 
-  summarize(b.avg.rd = mean(rd), b.sd.rd = sd(rd)) %>% 
-  arrange(desc(method))
+  # Summarize over bootstraps
+  boot.summ <- all.boot %>% 
+    group_by(method) %>% 
+    summarize(se = sd(rd))
 
-sim.res$coverage[2:3] <- (sim.res$rd[2:3] - 1.96 * boot.summ$b.sd.rd) <= truth$rd & 
-  truth$rd <= (sim.res$rd[2:3] + 1.96 * boot.summ$b.sd.rd)
-sim.res$se[2:3] <- boot.summ$b.sd.rd
+  sim.res <- left_join(sim.res, boot.summ, by="method") %>% 
+    mutate(coverage = (rd - 1.96*se) <= truth$rd & truth$rd <= (rd + 1.96*se))
 
-return(sim.res)
+  return(sim.res)
 }
 
 cores <- detectCores() - 2
@@ -414,7 +484,7 @@ all.res <- mclapply(1:nsim, function(x) {simloop(x, nboot, montecarlo)}, mc.core
 all.res <- do.call(rbind, all.res)
 all.res$truth <- truth$rd
 
-filename <- paste("./results/timevar_1-conf_n-", n, "_mc-", montecarlo, sep="")
+filename <- paste("../results/timevar_1-conf_n-", n, "_mc-", montecarlo, sep="")
 if (lambda==0.05) {
   filename <- paste(filename, "_common.txt", sep="")
 } else {

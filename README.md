@@ -1,6 +1,6 @@
 # IPW-g-comp-sim
 
-Code is a work in progress and is currently written to run on the Emory computing cluster. More general code will be provided closer to completion.
+Code is for an in-progress paper and is currently written to run on the Emory computing cluster. More general code will be provided closer to completion.
 
 There are 4 programs:
   - timefix_1-conf.R -- Runs simulation analyses for the *time-fixed* case with *1 baseline confounder*

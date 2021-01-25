@@ -286,7 +286,7 @@ all.res <- do.call(rbind,all.res)
 all.res$truth <- rep(true, dim(all.res)[1])
 
 # Output results
-filename <- paste("./results/timefix_1-conf_n-", n, "_mc-", montecarlo, sep="")
+filename <- paste("../results/timefix_1-conf_n-", n, "_mc-", montecarlo, sep="")
 if (lambda==0.05) {
 	filename <- paste(filename, "_common.txt", sep="")
 } else {

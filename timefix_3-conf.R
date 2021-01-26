@@ -9,7 +9,7 @@
 #
 # Author: Jacqueline Rudolph and Ashley Naimi
 #
-# Last Update: 25 Jan 2021
+# Last Update: 26 Jan 2021
 #
 ##################################################################################################
 
@@ -230,6 +230,23 @@ sim_func <- function(iter){
       mutate(time = ceiling(Tv)) %>% 
       select(bid, time, Z) %>% 
       pivot_wider(names_from=time, names_prefix="Z", values_from=Z, values_fill=0, names_sort=T)  
+    
+      # Deal with the possibility that no one might have an event at a particular t
+      out <- data.frame(Z1=rep(0, dim(outcome)[1]),
+                        Z2=rep(0, dim(outcome)[1]),
+                        Z3=rep(0, dim(outcome)[1]),
+                        Z4=rep(0, dim(outcome)[1]),
+                        Z5=rep(0, dim(outcome)[1]),
+                        Z6=rep(0, dim(outcome)[1]),
+                        Z7=rep(0, dim(outcome)[1]),
+                        Z8=rep(0, dim(outcome)[1]),
+                        Z9=rep(0, dim(outcome)[1]),
+                        Z10=rep(0, dim(outcome)[1]))
+      miss <- names(out)[!(names(out) %in% names(outcome))]
+      out2 <- data.frame(out[ , miss])
+      names(out2) <- names(out)[!(names(out) %in% names(outcome))]
+      outcome <- bind_cols(outcome, out2) %>% 
+        select(str_sort(c("bid", names(out)), numeric=TRUE))
     
       # Once an event has occurred, all subsequent nodes must be 1
       for (i in 2:10) {

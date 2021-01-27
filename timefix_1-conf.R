@@ -139,7 +139,7 @@ sim_func <- function(iter){
     
   boot_rep <- function(r) {
     set.seed(r+1)
-    boot.res$boot_num=rep(r, 3)
+    boot.res$boot_num <- rep(r, 3)
       
     # Bootstrap resample
     index <- sample(1:nrow(DeathsK.df), nrow(DeathsK.df), replace=T)
@@ -166,7 +166,8 @@ sim_func <- function(iter){
     surv <- data.frame(time = fit$time, 
                        surv = fit$surv,
                        exposure = fit$strata)
-    boot.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+    boot.res$r0[1] <- ifelse(is.infinite(1 - min(surv$surv[surv$exposure=="A=0"])), 0, 1 - min(surv$surv[surv$exposure=="A=0"]))
+      # In rare cases, there were 0 events which resulted in Infinite risks
     boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
     boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
         
@@ -214,7 +215,8 @@ sim_func <- function(iter){
     surv <- data.frame(time = fit$time, 
                        surv = fit$surv,
                        exposure = fit$strata)
-    boot.res$r0[2] <- 1 - min(surv$surv[surv$exposure=="A=0"])
+    boot.res$r0[2] <- ifelse(is.infinite(1 - min(surv$surv[surv$exposure=="A=0"])), 0, 1 - min(surv$surv[surv$exposure=="A=0"]))
+      # In rare cases, there were 0 events which resulted in Infinite risks
     boot.res$r1[2] <- 1 - min(surv$surv[surv$exposure=="A=1"])
     boot.res$rd[2] <- boot.res$r1[2] - boot.res$r0[2]
       

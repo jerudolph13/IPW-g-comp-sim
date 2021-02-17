@@ -133,16 +133,14 @@ conf1 <- function(lambda){
   
   set.seed(123)
   dat1 <- simulation(exposure=1)
+    dat1$last <- as.numeric(!duplicated(dat1$ID, fromLast=T))
+  
   set.seed(123)
   dat0 <- simulation(exposure=0)
-  dat <- data.table(rbind(dat0,dat1))
+    dat0$last <- as.numeric(!duplicated(dat0$ID, fromLast=T))
   
-  fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=dat))
-  surv <- data.frame(time = fit$time, 
-                     surv = fit$surv,
-                     exposure = fit$strata)
-  r0 <- 1 - min(surv$surv[surv$exposure=="A=0"])
-  r1 <- 1 - min(surv$surv[surv$exposure=="A=1"])
+  r0 <- mean(dat0$Z[dat0$last==1])
+  r1 <- mean(dat1$Z[dat1$last==1])
   rd <- r1 - r0
   
   return(rd)
@@ -277,16 +275,14 @@ conf3 <- function(lambda){
   
   set.seed(123)
   dat1 <- simulation(exposure=1)
+  dat1$last <- as.numeric(!duplicated(dat1$ID, fromLast=T))
+  
   set.seed(123)
   dat0 <- simulation(exposure=0)
-  dat <- data.table(rbind(dat0, dat1))
+  dat0$last <- as.numeric(!duplicated(dat0$ID, fromLast=T))
   
-  fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=dat))
-  surv <- data.frame(time = fit$time, 
-                     surv = fit$surv,
-                     exposure = fit$strata)
-  r0 <- 1 - min(surv$surv[surv$exposure=="A=0"])
-  r1 <- 1 - min(surv$surv[surv$exposure=="A=1"])
+  r0 <- mean(dat0$Z[dat0$last==1])
+  r1 <- mean(dat1$Z[dat1$last==1])
   rd <- r1 - r0
   
   return(rd)

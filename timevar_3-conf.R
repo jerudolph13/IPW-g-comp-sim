@@ -9,7 +9,7 @@
 #
 # Authors: Jacqueline Rudolph, Ashley Naimi (Credit to Young and Moodie for DGM)
 #
-# Last Update: 25 Jan 2021
+# Last Update: 17 Feb 2021
 #
 ##################################################################################################
 
@@ -200,19 +200,17 @@ simloop <- function(s, nboot, montecarlo){
     # This gives us a measure of "optimal" performance given sample size and model
   set.seed(123+s)
   oracle1 <- simulation(exposure=1)
-  set.seed(123+s)
+  oracle1$last <- as.numeric(!duplicated(oracle1$ID, fromLast=T))
+  set.seed(123+s) 
   oracle0 <- simulation(exposure=0)
-  oracle <- data.table(rbind(oracle0,oracle1))
+  oracle0$last <- as.numeric(!duplicated(oracle0$ID, fromLast=T))
   
-  fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=oracle))
-  surv <- data.frame(time = fit$time, 
-                     surv = fit$surv,
-                     exposure = fit$strata)
-  sim.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
-  sim.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+  sim.res$r0[1] <- mean(oracle0$Z[oracle0$last==1])
+  sim.res$r1[1] <- mean(oracle1$Z[oracle1$last==1])
   sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
 
   # Now create simulation to be used in analysis steps
+  set.seed(123+s)
   DeathsK.df <- simulation(exposure=NULL)
 
 
@@ -265,7 +263,8 @@ simloop <- function(s, nboot, montecarlo){
       group_by(bid) %>%  
       mutate(wt=cumprod(numerator/denominator)) %>% 
       ungroup(bid) 
-
+    
+    # IP-weighted survival
     fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt))
     surv <- data.frame(time = fit$time, 
                        surv = fit$surv,
@@ -384,24 +383,18 @@ simloop <- function(s, nboot, montecarlo){
       gdat$last <- as.numeric(gdat$Yp!=0 | gdat$time==lngth)
       return(gdat)
     }
-  
+    
+    set.seed(r+2)
     res0<-lapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=0)})
       res0<-do.call(rbind,res0)
     
+    set.seed(r+2)
     res1<-lapply(1:montecarlo,function(x) {pgf(x,mc_data=MC,length=N,exposure=1)})
       res1<-do.call(rbind,res1)
     
-    gcomp.dat <- data.table(rbind(res1, res0))
-    gcomp.dat$Int0 <- gcomp.dat$time - 1
-    gcomp.dat$Int <- ifelse(gcomp.dat$last==1, gcomp.dat$jj, gcomp.dat$time)
-    
-    # Run outcome model
-    fit <- summary(survfit(Surv(Int0, Int, Yp) ~ Ap, data=gcomp.dat))
-    surv <- data.frame(time = fit$time, 
-                       surv = fit$surv,
-                       exposure = fit$strata)
-    boot.res$r0[2] <- 1 - min(surv$surv[surv$exposure=="Ap=0"])
-    boot.res$r1[2] <- 1 - min(surv$surv[surv$exposure=="Ap=1"])
+    # Estimate risk
+    boot.res$r0[2] <- mean(res0$Yp[res0$last==1])
+    boot.res$r1[2] <- mean(res1$Yp[res1$last==1])
     boot.res$rd[2] <- boot.res$r1[2] - boot.res$r0[2]
     
 ##################################################################################################
@@ -512,9 +505,9 @@ simloop <- function(s, nboot, montecarlo){
 
   # For point estimate, pull out results where boot=0
   boot0 <- filter(all.boot, boot_num==0)
-  sim.res$r0[2:3] <- boot0$r0
-  sim.res$r1[2:3] <- boot0$r1
-  sim.res$rd[2:3] <- boot0$rd
+  sim.res$r0[2:4] <- boot0$r0
+  sim.res$r1[2:4] <- boot0$r1
+  sim.res$rd[2:4] <- boot0$rd
   all.boot <- filter(all.boot, boot_num>0)
   
   # Summarize over bootstraps

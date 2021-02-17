@@ -9,7 +9,7 @@
 #
 # Author: Jacqueline Rudolph and Ashley Naimi
 #
-# Last Update: 26 Jan 2021
+# Last Update: 17 Feb 2021
 #
 ##################################################################################################
 
@@ -48,37 +48,36 @@ sim.res <- data.frame(
 
 truth_func <- function(simN){
   ID <- c(1:simN)
-  L <- rbinom(simN, 1, 0.3) 
-  J <- rbinom(simN, 1, 0.4)
-  M <- rbinom(simN, 1, 0.5) 
   
-  p_t0  <- (lambda)*exp(log(2)*0 + 0.5*L + 0.6*J + 0.8*M) #In main analysis, lambda=0.01; for common outcome, lambda=0.05
-  Tv0 <- rexp(simN, p_t0)
-  Z0 <- as.numeric(Tv0 < 10)
-  Tv0 <- ifelse(Tv0 > 10, 10, Tv0)
+  truth_sim <- function(exposure) {
+    L <- rbinom(simN, 1, 0.3) 
+    J <- rbinom(simN, 1, 0.4)
+    M <- rbinom(simN, 1, 0.5) 
+    
+    p_t  <- (lambda)*exp(log(2)*exposure + 0.5*L + 0.6*J + 0.8*M)
+    Tv <- rexp(simN, p_t)
+    Z <- as.numeric(Tv < 10)
+    Tv <- ifelse(Tv > 10, 10, Tv)
+    
+    dat <- data.frame(ID, A=exposure, L, J, M, Tv, Z)
+    return(dat)
+  }
   
-  p_t1  <- (lambda)*exp(log(2)*1 + 0.5*L + 0.6*J + 0.8*M) #In main analysis, lambda=0.01; for common outcome, lambda=0.05
-  Tv1 <- rexp(simN, p_t1)
-  Z1 <- as.numeric(Tv1 < 10)
-  Tv1 <- ifelse(Tv1 > 10, 10, Tv1)
+  set.seed(123)
+  dat1 <- truth_sim(exposure=1)
   
-  DeathsK.df0 <- data.frame(ID, A=0, L, J, M, Tv=Tv0, Z=Z0)
-  DeathsK.df1 <- data.frame(ID, A=1, L, J, M, Tv=Tv1, Z=Z1)
+  set.seed(123)
+  dat0 <- truth_sim(exposure=0)
   
-  truth_dat <- data.table(rbind(DeathsK.df0,DeathsK.df1))
-  
-  fit <- summary(survfit(Surv(Tv, Z) ~ A, data=truth_dat))
-  truth.surv <- data.frame(time = fit$time, 
-                           surv = fit$surv,
-                           exposure = fit$strata)
-  r0 <- 1- min(truth.surv$surv[truth.surv$exposure=="A=0"])
-  r1 <- 1- min(truth.surv$surv[truth.surv$exposure=="A=1"])
+  truth_dat <- data.table(rbind(dat0, dat1))
+
+  r0 <- mean(truth_dat$Z[truth_dat$A==0])
+  r1 <- mean(truth_dat$Z[truth_dat$A==1])
   truth <- r1 - r0
   
   return(truth)
 }
 
-set.seed(123)
 true <- truth_func(1e6)
 
 
@@ -88,33 +87,38 @@ true <- truth_func(1e6)
 sim_func <- function(iter){
   set.seed(iter)
   sim.res$sim <- rep(iter, 4)
-
   ID <- c(1:n)
-  L <- rbinom(n, 1, 0.3) 
-  J <- rbinom(n, 1, 0.4)
-  M <- rbinom(n, 1, 0.5) 
   
-  p_a <- expit(-log(1/0.5 - 1) + 0.5*L - 0.5*0.3 + 0.6*J - 0.6*0.4 + 0.8*M - 0.8*0.5)
-  A <- rbinom(n, 1, p_a)
+  sim <- function(exposure=NULL) {
+    L <- rbinom(n, 1, 0.3) 
+    J <- rbinom(n, 1, 0.4)
+    M <- rbinom(n, 1, 0.5) 
+    
+    if (is.null(exposure)){
+      p_a <- expit(-log(1/0.5 - 1) + 0.5*L - 0.5*0.3 + 0.6*J - 0.6*0.4 + 0.8*M - 0.8*0.5)
+      A <- rbinom(n, 1, p_a)
+    } else {
+      A <- exposure
+    }
+    
+    p_t  <- (lambda)*exp(log(2)*A + 0.5*L + 0.6*J + 0.8*M)
+    Tv <- rexp(n, p_t)
+    Z <- as.numeric(Tv < 10)
+    Tv <- ifelse(Tv > 10, 10, Tv)
+    
+    dat <- data.frame(ID, A, L, J, M, Tv, Z)
+    return(dat)
+  }
   
-  p_t  <- (lambda)*exp(log(2)*A + 0.5*L + 0.6*J + 0.8*M) #In main analysis, lambda=0.01; for common outcome, lambda=0.05
-  Tv <- rexp(n, p_t)
-  Z <- as.numeric(Tv < 10)
-  Tv <- ifelse(Tv > 10, 10, Tv)
+  set.seed(iter)
+  DeathsK.df <- sim(exposure=NULL)
   
-  p_t0  <- (lambda)*exp(log(2)*0 + 0.5*L + 0.6*J + 0.8*M) #In main analysis, lambda=0.01; for common outcome, lambda=0.05
-  Tv0 <- rexp(n, p_t0)
-  Z0 <- as.numeric(Tv0 < 10)
-  Tv0 <- ifelse(Tv0 > 10, 10, Tv0)
+  set.seed(iter)
+  DeathsK.df1 <- sim(exposure=1)
   
-  p_t1  <- (lambda)*exp(log(2)*1 + 0.5*L + 0.6*J + 0.8*M) #In main analysis, lambda=0.01; for common outcome, lambda=0.05
-  Tv1 <- rexp(n, p_t1)
-  Z1 <- as.numeric(Tv1 < 10)
-  Tv1 <- ifelse(Tv1 > 10, 10, Tv1)
-  
-  DeathsK.df <- data.frame(ID, L, J, M, A, Tv, Z)
-  DeathsK.df0 <- data.frame(ID, L, J, M, A=0, Tv=Tv0, Z=Z0)
-  DeathsK.df1 <- data.frame(ID, L, J, M, A=1, Tv=Tv1, Z=Z1)
+  set.seed(iter)
+  DeathsK.df0 <- sim(exposure=0)
+
   
 ##################################################################################################
 ## Estimates
@@ -122,12 +126,8 @@ sim_func <- function(iter){
   # Oracle
   oracle <- data.table(rbind(DeathsK.df0,DeathsK.df1))
   
-  fit <- summary(survfit(Surv(Tv, Z) ~ A, data=oracle))
-  surv <- data.frame(time = fit$time, 
-                     surv = fit$surv,
-                     exposure = fit$strata)
-  sim.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
-  sim.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+  sim.res$r0[1] <- mean(oracle$Z[oracle$A==0])
+  sim.res$r1[1] <- mean(oracle$Z[oracle$A==1])
   sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
   
   # Bootstrap the IPW and g-computation
@@ -158,20 +158,15 @@ sim_func <- function(iter){
     # IPW
     denominator <- rep(NA, n)
     ps <- glm(A ~ L + J + M, family=binomial(link="logit"), data=boot)$fitted.values
-    denominator <- A*ps + (1-A)*(1-ps)
+    denominator <- boot$A*ps + (1-boot$A)*(1-ps)
     numerator <- rep(NA, n)
     ps <- glm(A ~ 1, family=binomial(link="logit"), data=boot)$fitted.values
-    numerator <- A*ps + (1-A)*(1-ps)
+    numerator <- boot$A*ps + (1-boot$A)*(1-ps)
       
     wt <- numerator / denominator 
       
-    fit <- summary(survfit(Surv(Tv, Z) ~ A, data=boot, weights=wt))
-    surv <- data.frame(time = fit$time, 
-                       surv = fit$surv,
-                       exposure = fit$strata)
-    boot.res$r0[1] <- ifelse(is.infinite(1 - min(surv$surv[surv$exposure=="A=0"])), 0, 1 - min(surv$surv[surv$exposure=="A=0"]))
-    # In rare cases, there were 0 events which resulted in Infinite risks
-    boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+    boot.res$r0[1] <- weighted.mean(boot$Z[boot$A==0], w=wt[boot$A==0])
+    boot.res$r1[1] <- weighted.mean(boot$Z[boot$A==1], w=wt[boot$A==1])
     boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
       
     # Classic g-computation
@@ -213,18 +208,15 @@ sim_func <- function(iter){
         
         gdat <- data.table(id,A,L,J,M,Tv,Z,rep)
         return(gdat)
-      }
+    }
+    set.seed(r+2)
     res0 <- pgf(mc_data=MC, exposure=0)
+    set.seed(r+2)
     res1 <- pgf(mc_data=MC, exposure=1)
     gcomp.dat <- data.table(rbind(res1, res0))
       
-    fit <- summary(survfit(Surv(Tv, Z) ~ A, data=gcomp.dat))
-    surv <- data.frame(time = fit$time, 
-                       surv = fit$surv,
-                       exposure = fit$strata)
-    boot.res$r0[2] <- ifelse(is.infinite(1 - min(surv$surv[surv$exposure=="A=0"])), 0, 1 - min(surv$surv[surv$exposure=="A=0"]))
-    # In rare cases, there were 0 events which resulted in Infinite risks
-    boot.res$r1[2] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+    boot.res$r0[2] <- mean(gcomp.dat$Z[gcomp.dat$A==0])
+    boot.res$r1[2] <- mean(gcomp.dat$Z[gcomp.dat$A==1])
     boot.res$rd[2] <- boot.res$r1[2] - boot.res$r0[2]
     
     # G-computation via iterated conditional expectations (ICE)

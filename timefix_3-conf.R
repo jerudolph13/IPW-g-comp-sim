@@ -56,8 +56,8 @@ truth_func <- function(simN){
     
     p_t  <- (lambda)*exp(log(2)*exposure + 0.5*L + 0.6*J + 0.8*M)
     Tv <- rexp(simN, p_t)
-    Z <- as.numeric(Tv < 10)
-    Tv <- ifelse(Tv > 10, 10, Tv)
+    Z <- as.numeric(Tv < 5)
+    Tv <- ifelse(Tv > 5, 5, Tv)
     
     dat <- data.frame(ID, A=exposure, L, J, M, Tv, Z)
     return(dat)
@@ -103,8 +103,8 @@ sim_func <- function(iter){
     
     p_t  <- (lambda)*exp(log(2)*A + 0.5*L + 0.6*J + 0.8*M)
     Tv <- rexp(n, p_t)
-    Z <- as.numeric(Tv < 10)
-    Tv <- ifelse(Tv > 10, 10, Tv)
+    Z <- as.numeric(Tv < 5)
+    Tv <- ifelse(Tv > 5, 5, Tv)
     
     dat <- data.frame(ID, A, L, J, M, Tv, Z)
     return(dat)
@@ -203,8 +203,8 @@ sim_func <- function(iter){
               - coef(mod.D)[names(coef(mod.D))=="J"]*J
               - coef(mod.D)[names(coef(mod.D))=="M"]*M)
         Tv <- rexp(length(d$id), p_t)
-        Z <- ifelse(Tv < 10, 1, 0)
-        Tv <- ifelse(Tv > 10, 10, Tv)
+        Z <- ifelse(Tv < 5, 1, 0)
+        Tv <- ifelse(Tv > 5, 5, Tv)
         
         gdat <- data.table(id,A,L,J,M,Tv,Z,rep)
         return(gdat)
@@ -230,12 +230,7 @@ sim_func <- function(iter){
                         Z2=rep(0, dim(outcome)[1]),
                         Z3=rep(0, dim(outcome)[1]),
                         Z4=rep(0, dim(outcome)[1]),
-                        Z5=rep(0, dim(outcome)[1]),
-                        Z6=rep(0, dim(outcome)[1]),
-                        Z7=rep(0, dim(outcome)[1]),
-                        Z8=rep(0, dim(outcome)[1]),
-                        Z9=rep(0, dim(outcome)[1]),
-                        Z10=rep(0, dim(outcome)[1]))
+                        Z5=rep(0, dim(outcome)[1]))
       miss <- names(out)[!(names(out) %in% names(outcome))]
       out2 <- data.frame(out[ , miss])
       names(out2) <- names(out)[!(names(out) %in% names(outcome))]
@@ -243,7 +238,7 @@ sim_func <- function(iter){
         select(str_sort(c("bid", names(out)), numeric=TRUE))
     
       # Once an event has occurred, all subsequent nodes must be 1
-      for (i in 2:10) {
+      for (i in 2:5) {
         outcome[ , i+1] <- outcome[ , i+1] + outcome[ , i]
       }
     

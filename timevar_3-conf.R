@@ -27,7 +27,7 @@ args <- commandArgs(trailingOnly=TRUE)
 nsim <- 1000                            #Number of simulations
 nboot <- 200                            #Number of bootstrap resamples
 n <- as.numeric(args[1])                #Sample size
-N <- 10                                 #Number of time points
+N <- 5                                  #Number of time points
 K <- 1                                  #Number of outcomes
 lambda <- as.numeric(args[2])           #Baseline rate
 montecarlo <- as.numeric(args[3])       #Monte Carlo resample size (0 implies no MC)

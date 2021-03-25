@@ -53,8 +53,8 @@ truth_func <- function(simN){
     L <- rbinom(simN, 1, 0.3) 
     p_t  <- (lambda)*exp(log(2)*exposure + 0.5*L) 
     Tv <- rexp(simN, p_t)
-    Z <- as.numeric(Tv < 10)
-    Tv <- ifelse(Tv > 10, 10, Tv)
+    Z <- as.numeric(Tv < 5)
+    Tv <- ifelse(Tv > 5, 5, Tv)
     
     dat <- data.frame(ID, A=exposure, L, Tv, Z)
     return(dat)
@@ -88,7 +88,7 @@ sim_func <- function(iter){
     L <- rbinom(n, 1, 0.3)
     
     if (is.null(exposure)){
-      p_a <- expit(-log(1/0.5 - 1) + 0.5*L - 0.5*0.3)
+      p_a <- expit(-log(1/0.5 - 1) - 0.5*0.3 + 0.5*L )
       A <- rbinom(n, 1, p_a)
     } else {
       A <- exposure
@@ -96,8 +96,8 @@ sim_func <- function(iter){
     
     p_t  <- (lambda)*exp(log(2)*A + 0.5*L) #In main analysis, lambda=0.01; for common outcome, lambda=0.05
     Tv <- rexp(n, p_t)
-    Z <- as.numeric(Tv < 10)
-    Tv <- ifelse(Tv > 10, 10, Tv)
+    Z <- as.numeric(Tv < 5)
+    Tv <- ifelse(Tv > 5, 5, Tv)
     
     dat <- data.frame(ID, A, L, Tv, Z)
     return(dat)
@@ -192,8 +192,8 @@ sim_func <- function(iter){
             exp(-coef(mod.D)[names(coef(mod.D))=="A"]*A 
                 - coef(mod.D)[names(coef(mod.D))=="L"]*L)
           Tv <- rexp(length(d$id), p_t)
-          Z <- ifelse(Tv < 10, 1, 0)
-          Tv <- ifelse(Tv > 10, 10, Tv)
+          Z <- ifelse(Tv < 5, 1, 0)
+          Tv <- ifelse(Tv > 5, 5, Tv)
           
           gdat <- data.table(id,A,L,Tv,Z,rep)
           return(gdat)
@@ -220,12 +220,7 @@ sim_func <- function(iter){
                         Z2=rep(0, dim(outcome)[1]),
                         Z3=rep(0, dim(outcome)[1]),
                         Z4=rep(0, dim(outcome)[1]),
-                        Z5=rep(0, dim(outcome)[1]),
-                        Z6=rep(0, dim(outcome)[1]),
-                        Z7=rep(0, dim(outcome)[1]),
-                        Z8=rep(0, dim(outcome)[1]),
-                        Z9=rep(0, dim(outcome)[1]),
-                        Z10=rep(0, dim(outcome)[1]))
+                        Z5=rep(0, dim(outcome)[1]))
       miss <- names(out)[!(names(out) %in% names(outcome))]
       out2 <- data.frame(out[ , miss])
       names(out2) <- names(out)[!(names(out) %in% names(outcome))]
@@ -233,7 +228,7 @@ sim_func <- function(iter){
         select(str_sort(c("bid", names(out)), numeric=TRUE))
       
       # Once an event has occurred, all subsequent nodes must be 1
-      for (i in 2:10) {
+      for (i in 2:5) {
         outcome[ , i+1] <- outcome[ , i+1] + outcome[ , i]
       }
       

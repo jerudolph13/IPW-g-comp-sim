@@ -9,7 +9,7 @@
 #
 # Authors: Jacqueline Rudolph, Ashley Naimi (Credit to Young and Moodie for DGM)
 #
-# Last Update: 17 Feb 2021
+# Last Update: 29 Mar 2021
 #
 ##################################################################################################
 
@@ -28,7 +28,7 @@ nsim <- 1000                            #Number of simulations
 nboot <- 200                            #Number of bootstrap resamples
 n <- as.numeric(args[1])                #Sample size
 N <- 5                                  #Number of time points
-K <- 1                                  #Number of outcomes
+k <- 1                                  #Number of outcomes
 lambda <- as.numeric(args[2])           #Baseline rate
 montecarlo <- as.numeric(args[3])       #Monte Carlo resample size (0 implies no MC)
 
@@ -67,20 +67,20 @@ simloop <- function(s, nboot, montecarlo){
   set.seed(s)
   
   # This is the matrix of parameters of interest, possibly different at each interval
-  psi.mat <- matrix(0, nrow=K, ncol=N+1)
+  psi.mat <- matrix(0, nrow=k, ncol=N+1)
   
   # Here are the effect sizes for the K=1 cause
   psi.mat[1, ] <- log(2)
   
   # Here the (untreated) all-cause rate is set to lambda
-  gamma.vec <- rep(log(lambda/K))
+  gamma.vec <- rep(log(lambda/k))
   muK <- sum(exp(gamma.vec))
-  A<-L<-ID<-Y<-Z<-Tv<-Int<-ALast<-LLast<-LFirst <- numeric()
-  T0.vec<-T.vec<-Y.vec<-Z.vec <- rep(0, n)
+  X<-Z1<-ID<-Y<-K<-Tv<-Int<-XLast<-Z1Last<-Z1First <- numeric()
+  T0.vec<-T.vec<-Y.vec<-K.vec <- rep(0, n)
   
   # Here are the coefficients determining the mediation and treatment assignment mechanisms
-  bevec <- c(log(3/7), 2, log(0.5), log(1.5)) # Used to generate time-varying confounder L
-  alvec <- c(log(2/7), 0.5, 0.5, log(4)) # Used to generate exposure (Intercept, L, LLast, ALast)
+  bevec <- c(log(3/7), 2, log(0.5), log(1.5)) # Used to generate time-varying confounder Z1
+  alvec <- c(log(2/7), 0.5, 0.5, log(4)) # Used to generate exposure (Intercept, Z1, Z1Last, XLast)
   
   # cval is used to introduce the confounding
   cval <- 30
@@ -95,7 +95,7 @@ simloop <- function(s, nboot, montecarlo){
       # Begin the interval-by-interval simulation
       m <- 0
       mu.tot <- 0
-      A.vec<-L.vec<-ALast.vec<-LLast.vec<-LFirst.vec <- rep(0, N+1)
+      X.vec<-Z1.vec<-XLast.vec<-Z1Last.vec<-Z1First.vec <- rep(0, N+1)
       # Implement Young's algorithm with multiple causes
       # Generate the survival time, then the cause
       while (muK*T0 > mu.tot & m <= N) {
@@ -103,29 +103,29 @@ simloop <- function(s, nboot, montecarlo){
           # First interval
           eta <- bevec[1] + bevec[2]*Ival + bevec[3]*0 + bevec[4]*0
           pval <- 1 / (1 + exp(-eta))
-          L.vec[m+1] <- rbinom(1, 1, pval)
+          Z1.vec[m+1] <- rbinom(1, 1, pval)
           
-          eta <- alvec[1] + alvec[2]*L.vec[m+1] + alvec[3]*0 + alvec[4]*0
+          eta <- alvec[1] + alvec[2]*Z1.vec[m+1] + alvec[3]*0 + alvec[4]*0
           pval <- 1 / (1 + exp(-eta))
-          if (is.null(exposure)) {A.vec[m + 1] <- rbinom(1, 1, pval)}
-          else {A.vec[m+1] <- exposure}
+          if (is.null(exposure)) {X.vec[m + 1] <- rbinom(1, 1, pval)}
+          else {X.vec[m+1] <- exposure}
           
-          ALast.vec[m+1] <- 0; LLast.vec[m+1] <- 0
-          LFirst.vec <- rep(L.vec[m+1], N + 1)
+          XLast.vec[m+1] <- 0; Z1Last.vec[m+1] <- 0
+          Z1First.vec <- rep(Z1.vec[m+1], N + 1)
         } else {
           # Subsequent intervals
-          eta <- bevec[1] + bevec[2]*Ival + bevec[3]*A.vec[m] + bevec[4]*L.vec[m]
+          eta <- bevec[1] + bevec[2]*Ival + bevec[3]*X.vec[m] + bevec[4]*Z1.vec[m]
           pval <- 1 / (1 + exp(-eta))
-          L.vec[m+1] <- rbinom(1, 1, pval) 
+          Z1.vec[m+1] <- rbinom(1, 1, pval) 
  
-          eta <- alvec[1] + alvec[2]*L.vec[m+1] + alvec[3]*L.vec[m] + alvec[4]*A.vec[m] 
+          eta <- alvec[1] + alvec[2]*Z1.vec[m+1] + alvec[3]*Z1.vec[m] + alvec[4]*X.vec[m] 
           pval <- 1 / (1 + exp(-eta))
-          if (is.null(exposure)) {A.vec[m+1] <- rbinom(1, 1, pval)}
-          else {A.vec[m+1] <- exposure}
-          ALast.vec[m+1] <- A.vec[m]; LLast.vec[m+1] <- L.vec[m]
+          if (is.null(exposure)) {X.vec[m+1] <- rbinom(1, 1, pval)}
+          else {X.vec[m+1] <- exposure}
+          XLast.vec[m+1] <- X.vec[m]; Z1Last.vec[m+1] <- Z1.vec[m]
         }
         
-        muval <- sum(exp(gamma.vec + A.vec[m+1]*psi.mat[ , m+1]))
+        muval <- sum(exp(gamma.vec + X.vec[m+1]*psi.mat[ , m+1]))
         
         # Tval is computed for each interval, but is overwritten until the final interval
         Tval <- m + (muK * T0 - mu.tot) / muval
@@ -138,30 +138,30 @@ simloop <- function(s, nboot, montecarlo){
       if (m > N) {
         # In the case of censoring at tenth interval, no failure.
         Tval <- m - 1
-        Z.vec[i] <- 0
+        Y.vec[i] <- 0
       } else {
         # In the case of failure, use the ratio hazards to define the
-        # relevant multinomial distribution on the K causes.
-        Z.vec[i] <- sample(c(1:K), 1, prob = exp(gamma.vec + A.vec[m]*psi.mat[ ,m]))
+        # relevant multinomial distribution on the k causes.
+        Y.vec[i] <- sample(c(1:k), 1, prob = exp(gamma.vec + X.vec[m]*psi.mat[ ,m]))
       }
       
       # Store the outcomes
       T0.vec[i] <- T0
       T.vec[i] <- Tval
-      Y.vec[i] <- m - 1
+      K.vec[i] <- m - 1
       ID <- c(ID, rep(i,m)) # Individual
       Int <- c(Int, c(1:m)) # Time point
-      A <- c(A, A.vec[1:m]) # Time-updated treatment
-      L <- c(L, L.vec[1:m]) # Time-updated covariate L
-      ALast <- c(ALast, ALast.vec[1:m]) # Treatment at last t point
-      LLast <- c(LLast, LLast.vec[1:m]) # Covariate L at last t point
-      LFirst <- c(LFirst, LFirst.vec[1:m]) # Baseline covariate L value
-      Z <- c(Z, rep(0,m - 1), Z.vec[i]) # Outcome: Z>0 indicates outcome of some type, determined by value)
+      X <- c(X, X.vec[1:m]) # Time-updated treatment
+      Z1 <- c(Z1, Z1.vec[1:m]) # Time-updated covariate Z1
+      XLast <- c(XLast, XLast.vec[1:m]) # Treatment at last t point
+      Z1Last <- c(Z1Last, Z1Last.vec[1:m]) # Covariate Z1 at last t point
+      Z1First <- c(Z1First, Z1First.vec[1:m]) # Baseline covariate Z1 value
+      Y <- c(Y, rep(0,m - 1), Y.vec[i]) # Outcome: Y>0 indicates outcome of some type, determined by value)
       tv <- c(1:m); tv[m] <- Tval
       Tv <- c(Tv, tv) # If event occurs, exact time at which it occurred; o.w. equal to Int)
     }
     
-    DeathsK.df <- data.frame(ID, Int, Tv, A, ALast, L, LLast, LFirst, Z)
+    DeathsK.df <- data.frame(ID, Int, Tv, X, XLast, Z1, Z1Last, Z1First, Y)
     
     # Trim off the intervals beyond the Nth (loop goes one too far)
     DeathsK.df <- DeathsK.df[DeathsK.df$Int <= N, ]
@@ -180,8 +180,8 @@ simloop <- function(s, nboot, montecarlo){
   oracle0 <- simulation(exposure=0)
     oracle0$last <- as.numeric(!duplicated(oracle0$ID, fromLast=T))
   
-  sim.res$r0[1] <- mean(oracle0$Z[oracle0$last==1])
-  sim.res$r1[1] <- mean(oracle1$Z[oracle1$last==1])
+  sim.res$r0[1] <- mean(oracle0$Y[oracle0$last==1])
+  sim.res$r1[1] <- mean(oracle1$Y[oracle1$last==1])
   sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
   
   # Now create simulation to be used in analysis steps
@@ -227,12 +227,12 @@ simloop <- function(s, nboot, montecarlo){
 ## IPW 
   
     # Denominator of weights
-    ps <- glm(A ~ ALast + L + LLast + as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
-    boot$denominator <- boot$A*ps + (1-boot$A)*(1-ps)
+    ps <- glm(X ~ XLast + Z1 + Z1Last + as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
+    boot$denominator <- boot$X*ps + (1-boot$X)*(1-ps)
     
     # Numerator of weights
-    ps <- glm(A ~ as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
-    boot$numerator <- boot$A*ps + (1-boot$A)*(1-ps)
+    ps <- glm(X ~ as.factor(Int), family=binomial(link="logit"), data=boot)$fitted.values
+    boot$numerator <- boot$X*ps + (1-boot$X)*(1-ps)
     
     boot <- boot %>% 
       group_by(bid) %>%  
@@ -240,31 +240,28 @@ simloop <- function(s, nboot, montecarlo){
       ungroup(bid) 
 
     # IP-weighted survival
-    fit <- summary(survfit(Surv(Int0, Tv, Z)  ~ A, data=boot, weights=wt))
+    fit <- summary(survfit(Surv(Int0, Tv, Y)  ~ X, data=boot, weights=wt))
     surv <- data.frame(time = fit$time, 
                        surv = fit$surv,
                        exposure = fit$strata)
-    boot.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="A=0"])
-    boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="A=1"])
+    boot.res$r0[1] <- 1 - min(surv$surv[surv$exposure=="X=0"])
+    boot.res$r1[1] <- 1 - min(surv$surv[surv$exposure=="X=1"])
     boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
   
 
 ##################################################################################################
 ## Classic g-computation
-    # Time-ordering: LLast, ALast, L, A, Z
+    # Time-ordering: Z1Last, XLast, Z1, X, Y
 
     # Model confounder
-    mod.L <- glm(L ~ LLast + ALast + as.factor(Int), family=binomial(link="logit"), data=boot)
+    mod.Z1 <- glm(Z1 ~ Z1Last + XLast + as.factor(Int), family=binomial(link="logit"), data=boot)
 
-    # Model exposure (if you want natural course)
-    # mod.A <- glm(A ~ ALast + L + LLast + as.factor(Int), family=binomial(link="logit"), data=boot)
-    
     # Model outcome (flexsurv used bc survreg doesn't support start/stop coding)
-    mod.D <- flexsurvreg(Surv(Int0,Tv,Z) ~ A + ALast + L + LLast, data=boot, dist="exp")
+    mod.D <- flexsurvreg(Surv(Int0,Tv,Y) ~ X + XLast + Z1 + Z1Last, data=boot, dist="exp")
     
     # Take a Monte Carlo (MC) sample
     # Select first obs for each person to obtain joint empirical distribution of baseline covariates
-    MC0 <- boot[boot$Int==1, (names(boot) %in% c("L", "A"))]
+    MC0 <- boot[boot$Int==1, (names(boot) %in% c("Z1", "X"))]
     index <- sample(1:nrow(MC0), montecarlo, replace=T)
     MC <- MC0[index, ]
     MC$id <- 1:montecarlo
@@ -279,22 +276,18 @@ simloop <- function(s, nboot, montecarlo){
       d <- mc_data
       d <- d[d$id==ii,]
       lngth <- length
-      Lp<-Ap<-Yp<-time <- numeric()
+      Z1p<-Xp<-Yp<-time <- numeric()
       time[1] <- j <- 1
       id <- d$id
   
-      Lp[1] <- d$L
-      if (is.null(exposure)) {
-        Ap[1] <- d$A
-      } else{
-        Ap[1] <- exposure
-      }
-      
+      Z1p[1] <- d$Z1
+      Xp[1] <- exposure
+
       # event status at first time point
-      dYp <- data.table(A=Ap[1], ALast=0, L=Lp[1], LLast=0)
+      dYp <- data.table(X=Xp[1], XLast=0, Z1=Z1p[1], Z1Last=0)
       expSim <- function (dat) {
         newD <- dat
-        desX <- newD[,c("A", "ALast", "L","LLast")]
+        desX <- newD[,c("X", "XLast", "Z1","Z1Last")]
         y0 <- rexp(1, exp(coef(mod.D)[names(coef(mod.D))=="rate"])*
                    exp(coef(mod.D)[!names(coef(mod.D))=="rate"]%*%t(desX)))
         return(y0)
@@ -311,24 +304,19 @@ simloop <- function(s, nboot, montecarlo){
       # subsequent time points
       for (j in 2:lngth) {
         if (Yp[j-1]==0) {
-          ALast <- Ap[j-1]; LLast <- Lp[j-1]
+          XLast <- Xp[j-1]; Z1Last <- Z1p[j-1]
           
-          dLp <- data.table(LLast, ALast, Int=factor(j))
-          Lp[j] <- pFunc(mod.L, dLp)
+          dZ1p <- data.table(Z1Last, XLast, Int=factor(j))
+          Z1p[j] <- pFunc(mod.Z1, dZ1p)
   
-          if (is.null(exposure)) {
-            dAp <- data.table(L=Lp[j], LLast, ALast, Int=factor(j))
-            Ap[j] <- pFunc(mod.A, dAp)
-          } else{
-            Ap[j] <- exposure
-          }
+          Xp[j] <- exposure
           
-          dYp <- data.table(A=Ap[j], ALast, L=Lp[j], LLast)
+          dYp <- data.table(X=Xp[j], XLast, Z1=Z1p[j], Z1Last)
           t0 <- expSim(dYp)
           if (t0<=0.001) {
             Yp[j-1] <- 1 #If the time interval is short enough to cause an error, place event at end of previous time point
-            Lp <- Lp[1:(j-1)]
-            Ap <- Ap[1:(j-1)]
+            Z1p <- Z1p[1:(j-1)]
+            Xp <- Xp[1:(j-1)]
             id <- id[1:(j-1)]
             time <- time[1:(j-1)]
             jj <- jj[1:(j-1)]
@@ -347,7 +335,7 @@ simloop <- function(s, nboot, montecarlo){
         }
         time[j] <- j
       }
-      gdat <- data.table(id, time, jj, Ap, Lp, Yp)
+      gdat <- data.table(id, time, jj, Xp, Z1p, Yp)
       gdat$last <- as.numeric(gdat$Yp!=0 | gdat$time==lngth)
       return(gdat)
     }
@@ -370,24 +358,24 @@ simloop <- function(s, nboot, montecarlo){
     
     # Make confounder wide
     confounder <- boot %>% 
-      select(bid, Int, L) %>% 
-      pivot_wider(names_from=Int, names_prefix="L", values_from=L, values_fill=NA, names_sort=T) 
+      select(bid, Int, Z1) %>% 
+      pivot_wider(names_from=Int, names_prefix="Z1", values_from=Z1, values_fill=NA, names_sort=T) 
     
     # Make exposure wide
     exposure <- boot %>% 
-      select(bid, Int, A) %>% 
-      pivot_wider(names_from=Int, names_prefix="A", values_from=A, values_fill=NA, names_sort=T)  
+      select(bid, Int, X) %>% 
+      pivot_wider(names_from=Int, names_prefix="X", values_from=X, values_fill=NA, names_sort=T)  
     
     # Make outcome wide
     outcome <- boot %>% 
-      select(bid, Int, Z) %>% 
-      pivot_wider(names_from=Int, names_prefix="Z", values_from=Z, values_fill=0, names_sort=T)  
+      select(bid, Int, Y) %>% 
+      pivot_wider(names_from=Int, names_prefix="Y", values_from=Y, values_fill=0, names_sort=T)  
       # Once an event has occurred, all subsequent nodes must be 1
       for (i in 2:N) {
         outcome[ , i+1] <- outcome[ , i+1] + outcome[ , i]
       }
     
-    # Interleave together in correct order (L, A, Z)
+    # Interleave together in correct order (Z1, X, Y)
     wide <- select(boot, bid)
     for (i in 1:N){
       wide <- merge(wide, confounder[ , c(1, i+1)], by="bid")
@@ -396,29 +384,29 @@ simloop <- function(s, nboot, montecarlo){
     }
     
     # Set up call to ltmle package
-    Anodes <- vars_select(names(wide), starts_with("A"))
-    Lnodes <- vars_select(names(wide), starts_with("L"))
-    Ynodes <- vars_select(names(wide), starts_with("Z"))
+    Anodes <- vars_select(names(wide), starts_with("X"))
+    Lnodes <- vars_select(names(wide), starts_with("Z1"))
+    Ynodes <- vars_select(names(wide), starts_with("Y"))
     
-    Aformula <- rep(NA, N)
+    Xformula <- rep(NA, N)
     for (i in 1:N){
       if (i==1) {
-        #Formula for A(1)
-        Aformula[i] <- paste(Anodes[i], "~", Lnodes[i], sep=" ")
+        #Formula for X(1)
+        Xformula[i] <- paste(Anodes[i], "~", Lnodes[i], sep=" ")
       } else {
-        #Formula for A(t), t>1
-        Aformula[i] <- paste(Anodes[i], "~", Anodes[i-1], "+", Lnodes[i], "+", Lnodes[i-1], sep=" ")
+        #Formula for X(t), t>1
+        Xformula[i] <- paste(Anodes[i], "~", Anodes[i-1], "+", Lnodes[i], "+", Lnodes[i-1], sep=" ")
       }
     }
     
     Yformula <- rep(NA, N)
     for (i in 1:N){
       if (i==1) {
-        #Formula for Z(1)
+        #Formula for Y(1)
         names(Yformula)[i] <- Ynodes[i]
         Yformula[i] <- paste("Q.kplus1 ~", Anodes[i], "+", Lnodes[i], sep=" ")
       } else {
-        #Formula for Z(t), t>1
+        #Formula for Y(t), t>1
         names(Yformula)[i] <- Ynodes[i]
         Yformula[i] <- paste("Q.kplus1 ~", Anodes[i], "+", Anodes[i-1], "+", Lnodes[i], "+", Lnodes[i-1], sep=" ")
       }
@@ -428,7 +416,7 @@ simloop <- function(s, nboot, montecarlo){
     res <- ltmle(data=select(wide, -bid), 
                  Anodes=Anodes, Lnodes=Lnodes, Ynodes=Ynodes,
                  Qform=Yformula,
-                 gform=Aformula,
+                 gform=Xformula,
                  abar=list(treatment=rep(1, N), control=rep(0, N)),
                  survivalOutcome=T,
                  SL.library=NULL,

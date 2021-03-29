@@ -9,7 +9,7 @@
 #
 # Author: Jacqueline Rudolph and Ashley Naimi
 #
-# Last Update: 17 Feb 2021
+# Last Update: 29 Mar 2021
 #
 ##################################################################################################
 
@@ -50,16 +50,16 @@ truth_func <- function(simN){
   ID <- c(1:simN)
   
   truth_sim <- function(exposure) {
-    L <- rbinom(simN, 1, 0.3) 
-    J <- rbinom(simN, 1, 0.4)
-    M <- rbinom(simN, 1, 0.5) 
+    Z1 <- rbinom(simN, 1, 0.3) 
+    Z2 <- rbinom(simN, 1, 0.4)
+    Z3 <- rbinom(simN, 1, 0.5) 
     
-    p_t  <- (lambda)*exp(log(2)*exposure + 0.5*L + 0.6*J + 0.8*M)
+    p_t  <- (lambda)*exp(log(2)*exposure + 0.5*Z1 + 0.6*Z2 + 0.8*Z3)
     Tv <- rexp(simN, p_t)
-    Z <- as.numeric(Tv < 5)
+    Y <- as.numeric(Tv < 5)
     Tv <- ifelse(Tv > 5, 5, Tv)
     
-    dat <- data.frame(ID, A=exposure, L, J, M, Tv, Z)
+    dat <- data.frame(ID, X=exposure, Z1, Z2, Z3, Tv, Y)
     return(dat)
   }
   
@@ -71,8 +71,8 @@ truth_func <- function(simN){
   
   truth_dat <- data.table(rbind(dat0, dat1))
 
-  r0 <- mean(truth_dat$Z[truth_dat$A==0])
-  r1 <- mean(truth_dat$Z[truth_dat$A==1])
+  r0 <- mean(truth_dat$Y[truth_dat$X==0])
+  r1 <- mean(truth_dat$Y[truth_dat$X==1])
   truth <- r1 - r0
   
   return(truth)
@@ -90,23 +90,23 @@ sim_func <- function(iter){
   ID <- c(1:n)
   
   sim <- function(exposure=NULL) {
-    L <- rbinom(n, 1, 0.3) 
-    J <- rbinom(n, 1, 0.4)
-    M <- rbinom(n, 1, 0.5) 
+    Z1 <- rbinom(n, 1, 0.3) 
+    Z2 <- rbinom(n, 1, 0.4)
+    Z3 <- rbinom(n, 1, 0.5) 
     
     if (is.null(exposure)){
-      p_a <- expit(-log(1/0.5 - 1) + 0.5*L - 0.5*0.3 + 0.6*J - 0.6*0.4 + 0.8*M - 0.8*0.5)
-      A <- rbinom(n, 1, p_a)
+      p_x <- expit(-log(1/0.5 - 1) + 0.5*Z1 - 0.5*0.3 + 0.6*Z2 - 0.6*0.4 + 0.8*Z3 - 0.8*0.5)
+      X <- rbinom(n, 1, p_x)
     } else {
-      A <- exposure
+      X <- exposure
     }
     
-    p_t  <- (lambda)*exp(log(2)*A + 0.5*L + 0.6*J + 0.8*M)
+    p_t  <- (lambda)*exp(log(2)*X + 0.5*Z1 + 0.6*Z2 + 0.8*Z3)
     Tv <- rexp(n, p_t)
-    Z <- as.numeric(Tv < 5)
+    Y <- as.numeric(Tv < 5)
     Tv <- ifelse(Tv > 5, 5, Tv)
     
-    dat <- data.frame(ID, A, L, J, M, Tv, Z)
+    dat <- data.frame(ID, X, Z1, Z2, Z3, Tv, Y)
     return(dat)
   }
   
@@ -126,8 +126,8 @@ sim_func <- function(iter){
   # Oracle
   oracle <- data.table(rbind(DeathsK.df0,DeathsK.df1))
   
-  sim.res$r0[1] <- mean(oracle$Z[oracle$A==0])
-  sim.res$r1[1] <- mean(oracle$Z[oracle$A==1])
+  sim.res$r0[1] <- mean(oracle$Y[oracle$X==0])
+  sim.res$r1[1] <- mean(oracle$Y[oracle$X==1])
   sim.res$rd[1] <- sim.res$r1[1] - sim.res$r0[1]
   
   # Bootstrap the IPW and g-computation
@@ -157,26 +157,26 @@ sim_func <- function(iter){
       
     # IPW
     denominator <- rep(NA, n)
-    ps <- glm(A ~ L + J + M, family=binomial(link="logit"), data=boot)$fitted.values
-    denominator <- boot$A*ps + (1-boot$A)*(1-ps)
+    ps <- glm(X ~ Z1 + Z2 + Z3, family=binomial(link="logit"), data=boot)$fitted.values
+    denominator <- boot$X*ps + (1-boot$X)*(1-ps)
     numerator <- rep(NA, n)
-    ps <- glm(A ~ 1, family=binomial(link="logit"), data=boot)$fitted.values
-    numerator <- boot$A*ps + (1-boot$A)*(1-ps)
+    ps <- glm(X ~ 1, family=binomial(link="logit"), data=boot)$fitted.values
+    numerator <- boot$X*ps + (1-boot$X)*(1-ps)
       
     wt <- numerator / denominator 
       
-    boot.res$r0[1] <- weighted.mean(boot$Z[boot$A==0], w=wt[boot$A==0])
-    boot.res$r1[1] <- weighted.mean(boot$Z[boot$A==1], w=wt[boot$A==1])
+    boot.res$r0[1] <- weighted.mean(boot$Y[boot$X==0], w=wt[boot$X==0])
+    boot.res$r1[1] <- weighted.mean(boot$Y[boot$X==1], w=wt[boot$X==1])
     boot.res$rd[1] <- boot.res$r1[1] - boot.res$r0[1]
       
     # Classic g-computation
-    mod.D <- survreg(Surv(Tv, Z) ~ A + L + J + M, data=boot, dist="exp")
+    mod.D <- survreg(Surv(Tv, Y) ~ X + Z1 + Z2 + Z3, data=boot, dist="exp")
       
     if (montecarlo==0) {      
-      MC <- boot[ , (names(boot) %in% c("L", "J", "M", "A", "rep"))]
+      MC <- boot[ , (names(boot) %in% c("Z1", "Z2", "Z3", "X", "rep"))]
       MC$id <- 1:n
     } else {
-      MC0 <- boot[ ,(names(boot) %in% c("L", "J", "M", "A", "rep"))]
+      MC0 <- boot[ ,(names(boot) %in% c("Z1", "Z2", "Z3", "X", "rep"))]
       index <- sample(1:nrow(MC0), montecarlo, replace=T)
       MC<-MC0[index, ]
       MC$id<-1:montecarlo	
@@ -187,26 +187,26 @@ sim_func <- function(iter){
         id <- d$id
         rep <- d$rep
         
-        L <- d$L
-        J <- d$J
-        M <- d$M
+        Z1 <- d$Z1
+        Z2 <- d$Z2
+        Z3 <- d$Z3
         
         if (is.null(exposure)) {
-          A <- d$A
+          X <- d$X
         } else {
-          A <- exposure
+          X <- exposure
         }
         
          p_t <- exp(-coef(mod.D)[names(coef(mod.D))=="(Intercept)"])*
-          exp(-coef(mod.D)[names(coef(mod.D))=="A"]*A 
-              - coef(mod.D)[names(coef(mod.D))=="L"]*L
-              - coef(mod.D)[names(coef(mod.D))=="J"]*J
-              - coef(mod.D)[names(coef(mod.D))=="M"]*M)
+          exp(-coef(mod.D)[names(coef(mod.D))=="X"]*X 
+              - coef(mod.D)[names(coef(mod.D))=="Z1"]*Z1
+              - coef(mod.D)[names(coef(mod.D))=="Z2"]*Z2
+              - coef(mod.D)[names(coef(mod.D))=="Z3"]*Z3)
         Tv <- rexp(length(d$id), p_t)
-        Z <- ifelse(Tv < 5, 1, 0)
+        Y <- ifelse(Tv < 5, 1, 0)
         Tv <- ifelse(Tv > 5, 5, Tv)
         
-        gdat <- data.table(id,A,L,J,M,Tv,Z,rep)
+        gdat <- data.table(id,X,Z1,Z2,Z3,Tv,Y,rep)
         return(gdat)
     }
     set.seed(r+2)
@@ -215,22 +215,22 @@ sim_func <- function(iter){
     res1 <- pgf(mc_data=MC, exposure=1)
     gcomp.dat <- data.table(rbind(res1, res0))
       
-    boot.res$r0[2] <- mean(gcomp.dat$Z[gcomp.dat$A==0])
-    boot.res$r1[2] <- mean(gcomp.dat$Z[gcomp.dat$A==1])
+    boot.res$r0[2] <- mean(gcomp.dat$Y[gcomp.dat$X==0])
+    boot.res$r1[2] <- mean(gcomp.dat$Y[gcomp.dat$X==1])
     boot.res$rd[2] <- boot.res$r1[2] - boot.res$r0[2]
     
     # G-computation via iterated conditional expectations (ICE)
     outcome <- boot %>% 
       mutate(time = ceiling(Tv)) %>% 
-      select(bid, time, Z) %>% 
-      pivot_wider(names_from=time, names_prefix="Z", values_from=Z, values_fill=0, names_sort=T)  
+      select(bid, time, Y) %>% 
+      pivot_wider(names_from=time, names_prefix="Y", values_from=Y, values_fill=0, names_sort=T)  
     
       # Deal with the possibility that no one might have an event at a particular t
-      out <- data.frame(Z1=rep(0, dim(outcome)[1]),
-                        Z2=rep(0, dim(outcome)[1]),
-                        Z3=rep(0, dim(outcome)[1]),
-                        Z4=rep(0, dim(outcome)[1]),
-                        Z5=rep(0, dim(outcome)[1]))
+      out <- data.frame(Y1=rep(0, dim(outcome)[1]),
+                        Y2=rep(0, dim(outcome)[1]),
+                        Y3=rep(0, dim(outcome)[1]),
+                        Y4=rep(0, dim(outcome)[1]),
+                        Y5=rep(0, dim(outcome)[1]))
       miss <- names(out)[!(names(out) %in% names(outcome))]
       out2 <- data.frame(out[ , miss])
       names(out2) <- names(out)[!(names(out) %in% names(outcome))]
@@ -242,17 +242,17 @@ sim_func <- function(iter){
         outcome[ , i+1] <- outcome[ , i+1] + outcome[ , i]
       }
     
-      # Merge back to baseline data   
-      dat <- left_join(select(boot, -c(Tv, Z)), outcome, by="bid")
+      # Merge back to baseline data
+      base <- boot[ , c("bid", "Z1", "Z2", "Z3", "X")]
+      dat <- left_join(base, outcome, by="bid")
     
       # Set up call to ltmle package
-      Anodes <- "A"
-      Lnodes <- c("L", "J", "M")
-      Ynodes <- vars_select(names(dat), starts_with("Z"))
+      Anodes <- "X"
+      Ynodes <- vars_select(names(dat), starts_with("Y"))
     
       # Use ltmle to implement ICE g-comp
       res <- ltmle(data=select(dat, -bid), 
-                   Anodes=Anodes, Lnodes=Lnodes, Ynodes=Ynodes,
+                   Anodes=Anodes, Ynodes=Ynodes,
                    abar=list(treatment=1, control=0),
                    survivalOutcome=T,
                    SL.library=NULL,

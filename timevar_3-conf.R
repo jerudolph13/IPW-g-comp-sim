@@ -9,7 +9,7 @@
 #
 # Authors: Jacqueline Rudolph, Ashley Naimi (Credit to Young and Moodie for DGM)
 #
-# Last Update: 29 Mar 2021
+# Last Update: 06 Apr 2021
 #
 ##################################################################################################
 
@@ -33,11 +33,6 @@ lambda <- as.numeric(args[2])           #Baseline rate
 montecarlo <- as.numeric(args[3])       #Monte Carlo resample size (0 implies no MC)
 
 expit <- function(x) {1/(1+exp(-x))}
-
-# Read in the truth
-truth <- read.table(file="../results/timevar_truth.txt", sep="\t") %>% 
-  rename(lam=lambda) %>% 
-  filter(n.conf==3 & lam==lambda)
 
 # Prepare data set to hold simulation results
 sim.res <- data.frame(
@@ -503,8 +498,7 @@ simloop <- function(s, nboot, montecarlo){
     group_by(method) %>% 
     summarize(se = sd(rd))
 
-  sim.res <- left_join(sim.res, boot.summ, by="method") %>% 
-    mutate(coverage = (rd - 1.96*se) <= truth$rd & truth$rd <= (rd + 1.96*se))
+  sim.res <- left_join(sim.res, boot.summ, by="method")
 
   return(sim.res)
 }
@@ -514,7 +508,6 @@ all.res <- mclapply(1:nsim, function(x) {simloop(x,nboot,montecarlo)}, mc.cores=
   # Use lapply to test the code if there are errors
   #all.res <- lapply(1:nsim, function(x) {simloop(x, nboot, montecarlo)})
 all.res <- do.call(rbind, all.res)
-all.res$truth <- truth$rd
 
 filename <- paste("../results/timevar_3-conf_n-", n, "_mc-", montecarlo, sep="")
 if (lambda==0.05) {

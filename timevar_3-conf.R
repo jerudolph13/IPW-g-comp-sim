@@ -9,7 +9,7 @@
 #
 # Authors: Jacqueline Rudolph, Ashley Naimi (Credit to Young and Moodie for DGM)
 #
-# Last Update: 06 Apr 2021
+# Last Update: 30 Apr 2021
 #
 ##################################################################################################
 
@@ -409,7 +409,7 @@ simloop <- function(s, nboot, montecarlo){
     }
     
     # Interleave together in correct order (Z1, Z2, Z3, X, Y)
-    wide <- select(boot, bid)
+    wide <- unique(select(boot, bid))
     for (i in 1:N){
       wide <- merge(wide, conf_Z1[ , c(1, i+1)], by="bid")
       wide <- merge(wide, conf_Z2[ , c(1, i+1)], by="bid")
@@ -464,8 +464,8 @@ simloop <- function(s, nboot, montecarlo){
     # Use ltmle to implement ICE g-comp
     res <- ltmle(data=select(wide, -bid), 
                  Anodes=Anodes, Lnodes=Lnodes, Ynodes=Ynodes,
-                 Qform=Yformula,
-                 gform=Xformula,
+                 #Qform=Yformula,
+                 #gform=Xformula,
                  abar=list(treatment=rep(1, N), control=rep(0, N)),
                  survivalOutcome=T,
                  SL.library=NULL,
@@ -503,7 +503,7 @@ simloop <- function(s, nboot, montecarlo){
   return(sim.res)
 }
 
-cores <- detectCores() - 2
+cores <- detectCores()
 all.res <- mclapply(1:nsim, function(x) {simloop(x,nboot,montecarlo)}, mc.cores=cores, mc.set.seed=FALSE)
   # Use lapply to test the code if there are errors
   #all.res <- lapply(1:nsim, function(x) {simloop(x, nboot, montecarlo)})

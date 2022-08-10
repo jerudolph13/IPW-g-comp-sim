@@ -10,16 +10,14 @@
 ###############################################################################################
 
 
-lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
 packages <- c("dplyr", "magrittr", "readr", "broom", "tidyr", "data.table", "tidyselect", "survival", 
               "flexsurv", "ltmle", "parallel")
 for (package in packages) {
-  library(package, character.only=T, lib.loc=lib)
+  library(package, character.only=T)
 }
 
 # Define parameters and functions
-start_sim <- 1		      
-end_sim <- 100
+nsim <- 500		      # Number of simulations
 nboot <- 500	      # Number of bootstrap resamples
 n <- 1226		        # Sample size
 n_mc <- 1226        # Size of Monte Carlo resample
@@ -458,7 +456,7 @@ return(sim.res)
 }
 
 cores <- detectCores() - 2
-all.res <- mclapply(start_sim:end_sim, function(ii) sim_rep(ii), mc.cores=cores, mc.set.seed=FALSE)
+all.res <- mclapply(1:nsim, function(ii) sim_rep(ii), mc.cores=cores, mc.set.seed=FALSE)
 #Use lapply when testing code for errors
 #all.res <- lapply(1:nsim, function(ii) sim_rep(ii))
 all.res <- do.call(rbind,all.res)
@@ -466,6 +464,6 @@ all.res <- do.call(rbind,all.res)
 
 # Output results ----------------------------------------------------------
 
-filename <- paste("../results/tvar_cens_cont", end_sim/100, ".csv", sep="")
+filename <- paste("../results/tvar_cens_cont.csv", sep="")
 write_csv(all.res, file=filename)
 

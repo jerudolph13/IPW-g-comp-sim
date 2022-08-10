@@ -17,7 +17,7 @@ for (package in packages) {
 }
 
 # Define parameters and functions
-nsim <- 1000		    # Number of simulations  
+nsim <- 500		      # Number of simulations  
 nboot <- 500	      # Number of bootstrap resamples
 n <- 1226		        # Sample size
 n_mc <- 1226        # Size of Monte Carlo resample

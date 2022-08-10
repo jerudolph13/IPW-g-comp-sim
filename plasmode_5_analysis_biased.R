@@ -10,16 +10,14 @@
 ###############################################################################################
 
 
-lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
 packages <- c("dplyr", "magrittr", "readr", "broom", "tidyr", "data.table", "tidyselect", "survival", 
               "flexsurv", "ltmle", "parallel")
 for (package in packages) {
-  library(package, character.only=T, lib.loc=lib)
+  library(package, character.only=T)
 }
 
 # Define parameters and functions
-start_sim <- 1		      
-end_sim <- 100
+nsim <- 1000		    # Number of simulations  
 nboot <- 500	      # Number of bootstrap resamples
 n <- 1226		        # Sample size
 n_mc <- 1226        # Size of Monte Carlo resample
@@ -536,6 +534,6 @@ all.res <- do.call(rbind,all.res)
 
 # Output results ----------------------------------------------------------
 
-filename <- paste("../results/tvar_cens_bias", end_sim/100, ".csv", sep="")
+filename <- paste("../results/tvar_cens_bias.csv", sep="")
 write_csv(all.res, file=filename)
 

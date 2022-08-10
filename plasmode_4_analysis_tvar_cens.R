@@ -10,15 +10,14 @@
 ###############################################################################################
 
 
-lib <- "~/R/x86_64-pc-linux-gnu-library/4.0"
 packages <- c("dplyr", "magrittr", "readr", "broom", "tidyr", "data.table", "tidyselect", "survival", 
               "flexsurv", "ltmle", "parallel")
 for (package in packages) {
-  library(package, character.only=T)#, lib.loc=lib)
+  library(package, character.only=T)
 }
 
 # Define parameters and functions
-nsim <- 100		      # Number of simulations
+nsim <- 1000		    # Number of simulations
 nboot <- 500	      # Number of bootstrap resamples
 n <- 1226		        # Sample size
 n_mc <- 2500        # Size of Monte Carlo resample

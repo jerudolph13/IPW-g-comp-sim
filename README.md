@@ -1,6 +1,6 @@
 # IPW-g-comp-sim
 
-This code accompanies an In Press paper at the *American Journal of Epidemiology*, entitled "A simulation study comparing the performance of time-varying inverse probability weighting and g-computation in survival analysis." In this paper, we compare using a plasmode simulation the performance of inverse probability weighting, Monte Carlo g-computation, and iterated conditional expectations g-computation when estimating the average treatment effect of a time-varying exposure on a survival outcome.
+This code accompanies the paper entitled "A simulation study comparing the performance of time-varying inverse probability weighting and g-computation in survival analysis", published at the *American Journal of Epidemiology*. In this paper, we compare using a plasmode simulation the performance of inverse probability weighting, Monte Carlo g-computation, and iterated conditional expectations g-computation when estimating the average treatment effect of a time-varying exposure on a survival outcome.
 
 The main programs do the following:
   - plasmode_1_data.R -- Set up the observed data from the Effects of Aspirin in Gestation and Reproduction (EAGeR) trial.

@@ -90,6 +90,6 @@ tvar.param <- data.frame(coef.x = c(coef.x, NA),
 
 # Output results ----------------------------------------------------------
 
-write_csv(tfix.param, file="../results/tfix_param.csv")
-write_csv(tvar.param, file="../results/tvar_param.csv")
+write_csv(tfix.param, file="../data/tfix_param.csv")
+write_csv(tvar.param, file="../data/tvar_param.csv")
 

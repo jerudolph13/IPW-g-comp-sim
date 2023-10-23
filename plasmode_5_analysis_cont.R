@@ -45,7 +45,7 @@ sim.res <- data.frame(
 
 base <- read_csv(file="../data/eager_base_limited.csv")
 
-tvar.param <- read_csv(file="../results/tvar_param.csv")
+tvar.param <- read_csv(file="../data/tvar_param.csv")
   coef.x <- tvar.param$coef.x
   coef.c <- tvar.param$coef.c
   coef.n <- tvar.param$coef.n
